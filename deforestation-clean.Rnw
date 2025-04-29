@@ -53,7 +53,10 @@ if(Sys.info()["sysname"] == "Windows"){
     }
     ## SNIC
     if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
-        my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"            
+        my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"
+        country.data.path <- "~/Deforestation/Country data/"
+        deforestation.results.path <- "~/Deforestation/Results/"
+        deforestation.path <- "~/Deforestation/"
     }
     ## nomad, only do this for a small set
     if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
@@ -92,7 +95,7 @@ Create a custom subset for each deprivation, including only the cases which have
 <<continued.country>>=
 library("readxl"); library(data.table)
 country.data <- Reduce(merge, sapply(c("API_NY.GDP.PCAP.CD_DS2_en_excel_v2_5795829.xlsx", "API_NE.EXP.GNFS.ZS_DS2_en_excel_v2_5728793.xlsx", "API_NV.AGR.TOTL.ZS_DS2_en_excel_v2_5728821.xlsx", "API_SP.POP.1564.TO_DS2_en_excel_v2_5731200.xlsx"), function(x) {
-    temp.dt.1 <- data.table(read_excel(paste0("/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Forskning/global-living-conditions/Deforestation/Country data/", x), skip = 2))
+    temp.dt.1 <- data.table(read_excel(paste0(country.data.path, x), skip = 2))
     meta.data <- temp.dt.1[["Indicator Name"]][1]
     temp.dt.1[, c("Indicator Name", "Indicator Code", "Country Code") := NULL, ]
     temp.dt.2 <- melt(temp.dt.1, id.vars = "Country Name", variable.name = "raw.year", value.name = meta.data)
