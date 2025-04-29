@@ -48,14 +48,12 @@ if(Sys.info()["sysname"] == "Windows"){
     if(file.exists("/media/sf_Our_data/Data/DHS")){
         my.dir <- "/media/sf_Our_data/Data/DHS"
         deforestation.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
-        deforestation.results.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Deforestation/"
         africa.map.path <- "~/annex/projekt/child-poverty/statiska-eller-stora-filer/"
     }
     ## SNIC
     if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
         my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"
         country.data.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/Country data/"
-        deforestation.results.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/Results/"
         deforestation.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/"
         africa.map.path <- "~/"
     }
@@ -324,7 +322,7 @@ Calculating the loss of tree coverage over time requires use of both the coverag
 
 <<get.raster>>=
 ## make sure the files are available locally
-fetch.raster <- function(my.files, deforestation.path = "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/", verbose = FALSE) {
+fetch.raster <- function(my.files, deforestation.path, verbose = FALSE) {
     ## download files, if they are missing
     my.urls <- sapply(my.files, url.from.file.f)    
     for(j in 1:length(my.files)){
@@ -340,7 +338,7 @@ fetch.raster <- function(my.files, deforestation.path = "/media/sf_Our_data/Hans
     }
 }
 
-raster.from.file.f <- function(file, my.mask, deforestation.path = "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"){
+raster.from.file.f <- function(file, my.mask, deforestation.path){
     r <- raster::raster(paste0(deforestation.path, file))
     r.cropped <- raster::crop(r, my.mask)
     r.masked <- raster::mask(r.cropped, my.mask)
@@ -655,7 +653,7 @@ easy.ones <- data.table::rbindlist(foreach::foreach(
             .packages=c("sp"),
             .inorder=FALSE
             ) %dopar% {
-           my.data.table <- try(data.table::rbindlist(temporal.loss.for.multiple.areas.from.a.single.grid.cell(multiple.areas.depends.on.same.single.tiff[[j]])), silent = TRUE)
+           my.data.table <- try(data.table::rbindlist(temporal.loss.for.multiple.areas.from.a.single.grid.cell(multiple.areas.depends.on.same.single.tiff[[j]], deforestation.path = deforestation.path)), silent = TRUE)
            if(length(attr(my.data.table, which = "condition")) > 0){
                globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.for.multiple.areas.from.a.single.grid.cell... failed on element", j), "deforestation.log")
                return(NULL)
@@ -793,7 +791,7 @@ my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes), functi
                         j=areas.by.size.classes[[i]],
                         .packages=c("sp")
                         ) %dopar% {
-                            my.data.table <- try(temporal.loss.directly.from.possible.multiple.files(j), silent = TRUE)
+                            my.data.table <- try(temporal.loss.directly.from.possible.multiple.files(j, deforestation.path = deforestation.path), silent = TRUE)
                             if(length(attr(my.data.table, which = "condition")) > 0){
                                 globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.directly.from.possible... failed on element", j, "in class", i), "deforestation.log")
                                 return(NULL)
