@@ -140,7 +140,7 @@ my.dt <- download.and.harmonise(
     required.number.of.waves = 2,
     file.types.to.download = c("PR", "GE", "IR", "MR", "KR"),
     directory = my.dir,
-    make.pdf = TRUE
+    make.pdf = FALSE
 )
 save(my.dt, file = "living-conditions.RData")
 
