@@ -57,6 +57,7 @@ if(Sys.info()["sysname"] == "Windows"){
         country.data.path <- "~/Deforestation/Country data/"
         deforestation.results.path <- "~/Deforestation/Results/"
         deforestation.path <- "~/Deforestation/"
+        africa.map.path <- "~/"
     }
     ## nomad, only do this for a small set
     if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
