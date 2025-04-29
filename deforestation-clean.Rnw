@@ -257,8 +257,10 @@ A polygon that covers the whole continent of interest, including countries on th
 
 <<the-whole-continent, fig.cap = "the africa object">>=
 load(paste0(africa.map.path, "africa-lowres.RData")) ## africa.mainland and madagascar, both in lowres
-africa <- terra::union(africa.mainland, madagascar)
-rm(africa.mainland, madagascar); gc(verbose = FALSE)
+if(exists("africa") == FALSE){
+    africa <- terra::union(africa.mainland, madagascar)
+    rm(africa.mainland, madagascar); gc(verbose = FALSE)
+}
 @ 
 
 Create the surface covered by all countries in the sample, here called «my.window«.
