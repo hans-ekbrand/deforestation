@@ -1,0 +1,1306 @@
+\documentclass[10pt,english]{article}
+\usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry} % 16:9 three pages in a row
+\usepackage[english]{babel}
+\usepackage{longtable}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{varioref} %% vref
+\usepackage{paralist} %% compactenum
+\usepackage{siunitx} %% \num
+\usepackage{IEEEtrantools} % proper indentation for multi-line equations
+\usepackage{amsmath} %% \pmatrix
+\usepackage{subfig}
+
+%% make a single « start and end a chunk of \texttt{}, and two «« to represent the literal «.
+\catcode`«=\active
+\def«#1«{\texttt{#1}}
+
+% This chunk is needed to make sure evaluation is taking place in the current directory.
+<<setup.outer, echo=FALSE, tidy=FALSE, message=FALSE>>=
+knitr::opts_chunk$set(results='hide', cache=TRUE, echo=TRUE, warning=TRUE, fig.pos = 'htb', tidy.opts=list(blank=FALSE, width.cutoff=50), background='white', tidy=FALSE, error=TRUE, message=FALSE, dev="pdf", autodep = TRUE)
+knitr::opts_knit$set(root.dir = ".")
+knitr::knit_hooks$set(crop = knitr::hook_pdfcrop)
+options(scipen=999) ## Avoid scientific formating of large numbers.
+@
+
+\begin{document}
+
+<<setup.more, echo = FALSE>>=
+my.dir <- "global-living-conditions"
+
+## If you have a local cache of files downloaded from the DHS website
+## then change my.dir to point to that folder
+
+if(Sys.info()["sysname"] == "Windows"){
+  ## figure out which computer we are in. TODO consider make all paths relative to the working directory.
+  if(file.exists("D:/Hans/DHS/global-living-conditions")){
+      my.dir <- "D:/Hans/DHS/global-living-conditions"    
+  } else {
+      if(file.exists("F:/Hans/global-living-conditions")){
+          my.dir <- "F:/Hans/global-living-conditions"
+    } else {
+      stop("no data directory found in two spots for Windows.")
+    }
+  }
+} else {
+    ## 245
+    if(file.exists("/media/sf_Our_data/Data/DHS")){
+        my.dir <- "/media/sf_Our_data/Data/DHS"
+        deforestation.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
+        deforestation.results.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Deforestation/"
+        africa.map.path <- "~/annex/projekt/child-poverty/statiska-eller-stora-filer/"
+    }
+    ## SNIC
+    if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
+        my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"            
+    }
+    ## nomad, only do this for a small set
+    if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
+        my.dir <- "~/mnt/poverty/media/sf_Our_data/Data/DHS"
+    }
+}
+@
+
+<<config>>=
+my.countries <- c("Senegal", "Gambia", "Guinea", "Sierra Leone", "Liberia", "Mali", "Cote d'Ivoire", "Burkina Faso", "Ghana", "Benin", "Togo", "Nigeria", "Chad", "Cameroon", "Sudan", "Ethiopia", "Sudan", "Gabon", "Congo", "Congo Democratic Republic", "Uganda", "Rwanda", "Kenya", "Tanzania", "Angola", "Malawi", "Mozambique", "Zambia", "Zimbabwe", "Namibia", "Lesotho", "South Africa", "Eswatini", "Madagascar", "Egypt", "Tunisia", "Morocco", "Burundi")
+
+if(!exists("my.countries")){
+    my.countries = NULL
+}
+
+if(!exists("my.waves")){
+    my.waves = NULL
+}
+
+@
+
+<<install.packages>>=
+required.packages <- c("httr", "data.table", "car", "sp", "raster", "devtools", "purrr", "doParallel", "snow", "viridisLite", "geosphere", "parallel", "foreach", "tmap", "terra", "sf", "lme4")
+for(package in required.packages){
+    if(!require(package, character.only=TRUE)){
+        install.packages(package, character.only=TRUE)
+    }
+}
+library(devtools)
+devtools::install_github("matthewkling/colors3d")
+@
+
+
+Create a custom subset for each deprivation, including only the cases which have data on this deprivation and add country level factors.
+
+<<continued.country>>=
+library("readxl"); library(data.table)
+country.data <- Reduce(merge, sapply(c("API_NY.GDP.PCAP.CD_DS2_en_excel_v2_5795829.xlsx", "API_NE.EXP.GNFS.ZS_DS2_en_excel_v2_5728793.xlsx", "API_NV.AGR.TOTL.ZS_DS2_en_excel_v2_5728821.xlsx", "API_SP.POP.1564.TO_DS2_en_excel_v2_5731200.xlsx"), function(x) {
+    temp.dt.1 <- data.table(read_excel(paste0("/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Forskning/global-living-conditions/Deforestation/Country data/", x), skip = 2))
+    meta.data <- temp.dt.1[["Indicator Name"]][1]
+    temp.dt.1[, c("Indicator Name", "Indicator Code", "Country Code") := NULL, ]
+    temp.dt.2 <- melt(temp.dt.1, id.vars = "Country Name", variable.name = "raw.year", value.name = meta.data)
+    temp.dt.2$raw.year <- as.numeric(as.character(temp.dt.2$raw.year))
+    colnames(temp.dt.2) <- gsub("Country Name", "country", colnames(temp.dt.2))
+    return(temp.dt.2)
+}, simplify = FALSE))
+## improve some var names
+bad.names <- c("GDP per capita (current US$)", "Exports of goods and services (% of GDP)", "Agriculture, forestry, and fishing, value added (% of GDP)", "Population ages 15-64, total")
+nice.names <- c("GDP", "percent.goods.and.services.percent.of.gdp", "agriculture.forestry.percent.of.gdp", "population.15.64")
+for(i in 1:length(bad.names)){
+    colnames(country.data) <- gsub(bad.names[i], nice.names[i], colnames(country.data), fixed = TRUE)
+}
+@
+
+Each subset includes the average education in years for the adults aged 24-44 in year 2000 and aged 45-65 in year 2021, in order for us to be able to estimate how different the group surveyed in one year is from the group surveyed another year (in the same area), even if the educational level is increasing during the study period. By focussing on the persons who have already aquired their education when the study starts, we make use of the invariant feature of education, it is never lost.
+
+
+<<load.data>>=
+library(devtools)
+install_bitbucket(repo = "hansekbrand/iwi") ## install iwi first, since DHSharmonisation depends on it.
+install_bitbucket(repo = "hansekbrand/DHSharmonisation", ref="debug")
+library(globallivingconditions)
+load("~/user_credentials_dhs.RData") # a list with two named elements:
+                                   # "dhs.user" and "dhs.password" 
+my.dt <- download.and.harmonise(
+    dhs.user=credentials$dhs.user,
+    dhs.password=credentials$dhs.password,
+    countries = my.countries,
+    waves = my.waves,
+    vars.to.keep=c("source", "version", "year.of.interview", "country.code.ISO.3166.alpha.3", 
+"m49.region", "RegionID", "district", "ClusterID", "ClusterID.clean", 
+"PersonID.unique", "severe.food.deprivation", "severe.water.deprivation", 
+"severe.sanitation.deprivation", "severe.shelter.deprivation", "has.electricity",
+"HouseholdID", "month.of.interview", "sample.weight", "water", "time.to.water", "iwi",
+"rural", "lon", "lat", "phone", "owns.tv", "owns.land", "refridgerator", "owns.livestock",
+"gadm.areaname.3", "gadm.areaname.2", "gadm.areaname.1",
+"relation.to.hh", "age", "education.in.years", "education", "superClusterID"),
+    check.dhs.for.more.data = TRUE,
+    variable.packages = c("wealth", "india", "empowerment"),
+    required.number.of.waves = 2,
+    file.types.to.download = c("PR", "GE", "IR", "MR", "KR"),
+    directory = my.dir,
+    make.pdf = TRUE
+)
+save(my.dt, file = "living-conditions.RData")
+
+## Create the set of numeric codes of the countries in the sample.
+country.codes <- my.dt[, unique(country.code.ISO.3166.alpha.3), ]
+n.measurement.locations <- nrow(unique(my.dt[, list(lon, lat), ]))
+n.persons <- nrow(my.dt)
+
+rm(my.dt)
+gc(verbose=FALSE)
+
+@
+
+To identify which grid cell(s) of deforestation data cover the gadm region, find the North West corner, that is, «max(latitude)« and «min(longitude)« of the bounding box, and that gives the first needed cell. Then extend to east and south if necessary. Assume no region covers more than four grid cells.
+
+<<find.the.grid.cell>>=
+library(httr)
+base.url <- "https://storage.googleapis.com/earthenginepartners-hansen/GFC-2021-v1.9/"
+
+## helper functions
+url.from.point.f <- function(lon, lat, layer){
+    lon.first.corner <- floor(lon / 10) * 10
+    lat.first.corner <- ceiling(lat / 10) * 10
+    if(abs(lon.first.corner) > 100){
+        lon.corner <- paste0("0", abs(lon.first.corner))
+    } else {
+        ## This does not make sense, but it works.
+        lon.corner <- paste0("0", abs(lon.first.corner))        
+        ## lon.corner <- abs(lon.first.corner)
+    }
+    if(abs(lon.first.corner) < 10){
+        ## longitude 0 is written 000E
+        lon.corner <- paste0("00", abs(lon.first.corner))
+    }    
+    if(lon.first.corner < 0){
+        lon.corner <- paste0(lon.corner, "W")
+    } else {
+        lon.corner <- paste0(lon.corner, "E")    
+    }
+    if(abs(lat.first.corner) < 10){
+        ## latitude 0 is written 00N
+        lat.corner <- paste0("0", abs(lat.first.corner))
+    } else {
+        lat.corner <- abs(lat.first.corner)        
+    }
+    if(lat.first.corner < 0){
+        lat.corner <- paste0(lat.corner, "S")
+    } else {
+        lat.corner <- paste0(lat.corner, "N")    
+    }
+    my.file <- paste0("Hansen_GFC-2021-v1.9_", layer, "_", lat.corner, "_", lon.corner, ".tif")    
+    return(my.file)
+}
+point.at.corners.f <- function(combination, my.bbox){
+    c(my.bbox["x", combination[1]], my.bbox["y", combination[2]])
+}
+
+file.name.from.bbox.f <- function(bbox, layer){
+    my.combinations <- unlist(sapply(1:2, function(x){ sapply(1:2, function(y) { c(x, y) }, simplify = FALSE) }, simplify = FALSE), recursive = FALSE)
+    points.at.corners <- sapply(my.combinations, point.at.corners.f, my.bbox = bbox)
+    urls.at.corners <- apply(points.at.corners, 2, function(x) { url.from.point.f(lon=x[1], lat=x[2], layer) })
+    return(unique(urls.at.corners))
+}
+
+url.from.file.f <- function(file.name) { paste0(base.url, file.name) }
+
+dhs.grid <- get(load("dhs.grid.RData"))
+
+for(i in 1:length(dhs.grid)){
+    my.bbox <- dhs.grid[i]@bbox
+    for(my.layer in c("treecover2000", "lossyear")){
+        my.files <- file.name.from.bbox.f(my.bbox, layer = my.layer)
+        my.urls <- sapply(my.files, url.from.file.f)
+        ## fetch missing files
+        for(j in 1:length(my.files)){
+            file.and.path <- paste0(deforestation.path, my.files[j])
+            if(!file.exists(file.and.path)){
+	        globallivingconditions::my.log.f(paste(Sys.time(), "country number", i, "j", j, "will download this url:", my.urls[j], "and save it as", file.and.path), "deforestation.log")
+                GET(my.urls[j], write_disk(file.and.path))
+            }
+        }
+    }
+}
+@
+
+
+To be able to inspect single countries, write a function that loads the borders of the country.
+
+<<borders>>=
+get.border <- function(country.code) {
+  string.code <- globallivingconditions::iso.3166$String.code[
+    match(country.code, globallivingconditions::iso.3166$numeric)
+  ]
+  filename <- file.path(my.dir, "GIS-borders", paste0(string.code, "_adm0.rds"))
+  if (file.exists(filename)) {
+    return(sf::st_as_sf(readRDS(filename)))  # Convert from sp to sf
+  } else {
+    return(NULL)
+  }
+}
+
+@ 
+
+To get the country code from the name use «iso.3166« from «globallivingconditions«.
+
+<<code.from.name>>=
+code.from.name <- function(name) {
+    globallivingconditions::iso.3166$numeric[match(name,
+                    globallivingconditions::iso.3166$String)]
+}
+@ 
+
+A polygon that covers the whole continent of interest, including countries on the contintent not included in the analysis, the object «africa« is a «SpatialPolygons« object. Use «raster::union()« to merge polygons to a single border.
+
+<<the-whole-continent, fig.cap = "the africa object">>=
+load(paste0(africa.map.path, "africa-lowres.RData")) ## africa.mainland and madagascar, both in lowres
+africa <- terra::union(africa.mainland, madagascar)
+rm(africa.mainland, madagascar); gc(verbose = FALSE)
+@ 
+
+Create the surface covered by all countries in the sample, here called «my.window«.
+
+<<create.the.window>>=
+my.window <- lapply(country.codes, get.border) |> ## Load borders
+    Filter(Negate(is.null), x = _) |> ## Remove NULLs
+    do.call(rbind, args = _) |> ## make one object with many polygons
+    sf::st_union() |> ## make a single polygon (keep only the outer borders)
+    terra::vect() ## convert to a terra vector object
+@
+
+<<plot-the-grid, fig.cap = paste0("The administrative areas at which we calculate the level of forestation and the level of deforestation. There are ", length(dhs.grid), " administrative areas. The red line encloses the area under study, ie. white areas without black lines in them are excluded. In total the data on living conditions consists of measurements from ", n.measurement.locations, " locations . Total number of surveyed persons: ", n.persons, "."), fig.width=6.45, fig.height=6.45>>=
+plot(africa)
+plot(dhs.grid, add = TRUE, lwd = 0.05)
+lines(my.window, col = "red", lwd = 0.5)
+@ 
+
+<<plot-the-coverage, fig.cap = "The tree coverage in the sampled area year 2000 per pixel, ie any pixel can have any color. The raw data was downsampled 10.000 times before producing this plot.", fig.width=6.45, fig.height=6.45, dpi=300>>=
+plot(terra::mask(Reduce(terra::merge, sapply(list.files(path=deforestation.path, pattern = ".*treecover.*small.tif", full.names=TRUE), terra::rast)), my.window))
+lines(africa)
+lines(my.window, col = "red", lwd = 0.5)
+@ 
+
+For verifying that the program is correct, the possibility to compare the pixel based version with the region based version of the same country is vital. Here is how to plot the pixel based version of a single country.
+
+«crop()« reduces the extent so that it matches the bounding box of the region specified as the second argument to «crop()«. This means that «crop()« could just as well work with the bounding box of its second argument. In contrast «mask()« uses the full geometry of its second argument, and for each pixel that lie outside the border of this polygon, «mask()« sets its value to NA. In short, both «crop()« and «mask()« are needed to achieve a small (crop) and correctly encoded (mask) result.
+
+\section{Explanation of the algorithm to produce the loss of tree coverage in an area}
+Since the data is of very high resolution, and the total area of the window is large, this is a Big Data problem, the data to process does not fit into the RAM of the computer. On the one hand there are a set of data files, corresponding to rectangular patches of the earth of size 10 degree by 10 degree. On the other hand, there is the grid with \Sexpr{length(dhs.grid)} areas.  When an area covers multiple data files the conceptually easiest way to calculate a mean would be to use first use the function «crop()« to cut out the parts of the data files covered by the area at hand, and then use the function «merge()« to stitch these together to a single area and then proceed as usual, applying the functions «values()« and «mean()« to get the desired result. This process works only as long as the areas to be stitched together are small. To be able to process large areas a more complex algorithm is required, an algorithm that produces statistics for each part separately and then uses the parts to calculate a weighted mean. This is what «temporal.loss.directly.from.possible.multiple.files()« and its companion «average.coverage.over.time.directly.from.single.file()« accomplished (the word ``directly'' refers to that the algorithm does this without merging the partial areas to a single large area first).
+
+To efficiently use these, the size of each area is computed, and all areas are classified by their size and each size-class is treated differently: the larger the areas in the size class, the more agressive parallelisation is applied (the largest areas are handled sequentially). In addition to this, parts of «average.coverage.over.time.directly.from.single.file()« is also parallelised in a way that takes the size of the partial area into account, but only on operating systems that support forking of processes, ie. Linux and MacOS.
+
+Calculating the loss of tree coverage over time requires use of both the coverage layer and the loss layer, since the loss data is a binary flagg per pixel, to quantify the loss we need to know the state of that pixel before the loss happened (and as a proxy we must use the state of that pixel in year 2000). Fortunately, only the cells where loss occured is needed, which generally is a very small portion of all cells in the loss layer.
+
+
+% \section{A package for accessing the global forest watch database}
+% Ideally, there is a function that takes as input a polygon, some layers, and some function to derive some statistics on those layers. You run that function on all your polygons, and call it a day.
+
+% The package must support a local cache so that it does not download any file more than once.
+
+% I want temporal loss, that is for a given set of years, provide the percentage of loss for the polygon.
+% Also, for the year 2000, what was the precentage covered by forest in the polygon.
+
+% Does the former require the latter? Yes. the layer ``lossyear'' only gives loss as a percentage of the whole area, but we want that as a fraction of the percentage of the whole area \emph{that was covered by forest at t0}.
+
+% But the former does not require the latter in the sense that both has to be in RAM simultaneously, and the calculation including both of them is done only on a scalar for each of them. This makes it sensible to have two independent funcctions.
+
+% The latter function is easiest, lets start with that one.
+
+% input a polygon
+% output the average coverage rate of that polygon.
+
+% This requires functionality to download, and load into RAM, the appropriate tiff file(s) and take a mean of the values.
+
+% The core functionality here is really the first part, taking the mean is simple enough.
+
+% Start with a helper function that gets the data into RAM.
+
+<<get.raster>>=
+## make sure the files are available locally
+fetch.raster <- function(my.files, deforestation.path = "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/", verbose = FALSE) {
+    ## download files, if they are missing
+    my.urls <- sapply(my.files, url.from.file.f)    
+    for(j in 1:length(my.files)){
+        file.and.path <- paste0(deforestation.path, my.files[j])
+        if(!file.exists(file.and.path)){
+            globallivingconditions::my.log.f(paste(Sys.time(), "will download this url:", my.urls[j], "and save it as", file.and.path), "deforestation.log")
+            httr::GET(my.urls[j], write_disk(file.and.path))
+        } else {
+            if(verbose) {
+                globallivingconditions::my.log.f(paste(Sys.time(), "File", my.files[j], "already downloaded to", file.and.path), "deforestation.log")
+            }
+        }
+    }
+}
+
+raster.from.file.f <- function(file, my.mask, deforestation.path = "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"){
+    r <- raster::raster(paste0(deforestation.path, file))
+    r.cropped <- raster::crop(r, my.mask)
+    r.masked <- raster::mask(r.cropped, my.mask)
+    rm(r, r.cropped)
+    return(r.masked)
+}
+
+load.raster.from.disk <- function(polygon, my.layer = "treecover2000", ...){
+    ## "lossyear" is the other layer of interest
+    my.files <- file.name.from.bbox.f(sp::bbox(polygon), layer = my.layer)
+    fetch.raster(my.files, ...)
+    if(length(my.files) > 1){
+        my.raster.list <- sapply(my.files, raster.from.file.f, my.mask = polygon, ...)
+        my.raster <- Reduce(raster::merge, my.raster.list)
+    } else {
+        my.raster <- raster.from.file.f(my.files, my.mask = polygon, ...)
+    }
+    return(my.raster)
+}
+
+average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, ...){
+    ## calculate size,  number of lost cells, per year.
+    ## depends on raster.from.file.f()
+
+    my.years = 1:21
+
+    ## my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon, ...)
+    my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon)
+    loss <- raster::values(my.loss.raster)
+    these.are.within.the.area <- which(is.na(loss) == FALSE)
+    size <- length(these.are.within.the.area)
+    these.were.lost.indices <- which(loss > 0)
+    these.were.lost.values <- loss[these.were.lost.indices]
+    rm(loss, my.loss.raster); trash <- gc(verbose = FALSE)
+    raster::removeTmpFiles(h=0)
+
+    ## my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon, ...)
+    my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon)
+    coverage <- raster::values(my.cover.raster)[these.are.within.the.area]
+    rm(my.cover.raster); trash <- gc(verbose = FALSE)
+    raster::removeTmpFiles(h=0)
+    average.coverage.at.t0 <- mean(coverage)    
+    ## The strategy is to calculate a new average for each year.
+    ## And the final measure is the difference in these averages.
+
+    my.f <- function(year) {
+        these.cells.lost.this.year.or.earlier <- these.were.lost.indices[which(these.were.lost.values <= year)]
+        ## calculate the new mean by adding zeros for all the lost cells, and removing the elements at those indices.
+        if(length(these.cells.lost.this.year.or.earlier) > 0){
+            ## since these.cells.lost.this.year.or.earlier are relative to these.were.lost,
+            ## don't forget to include these.were.lost at next row.
+            return(mean(c(coverage[-these.cells.lost.this.year.or.earlier],
+                          rep(0, length(these.cells.lost.this.year.or.earlier))), na.rm=TRUE))
+            ## <- na.rm=TRUE to handle pixels outside the region.
+        } else {
+            ## No loss has occured yet.
+            return(average.coverage.at.t0)
+        }
+    }
+    ## parallelise if on unix
+    if(.Platform$OS.type == "unix") {
+        n.cores <- floor((parallel::detectCores()-1) * min(1, 3E8/size))
+        globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for an area of size: ", size), "deforestation.log")    
+        average.coverage.per.year <- parallel::mclapply(my.years, my.f, mc.cores = n.cores)
+    } else {
+        average.coverage.per.year <- sapply(my.years, my.f)
+    }
+    names(average.coverage.per.year) <- paste0("t", my.years)
+    globallivingconditions::my.log.f(paste(Sys.time(), "Ready with temporal loss for an area of size", size, "for a polygon of size ",
+                                           geosphere::areaPolygon(polygon)), "deforestation.log")    
+    rm(polygon, my.cover.file, my.loss.file, coverage); gc(verbose = FALSE)
+    raster::removeTmpFiles(h=0)
+    return(list(size = size,
+                coverage = c(t0 = average.coverage.at.t0, average.coverage.per.year)
+                ))
+}
+
+temporal.loss.directly.from.possible.multiple.files <- function(index, ...){
+    ## index refers to dhs.grid
+    polygon <- dhs.grid[index]
+    my.bbox <- sp::bbox(polygon)
+    my.cover.files <- file.name.from.bbox.f(my.bbox, layer = "treecover2000", ...)
+    my.loss.files <- file.name.from.bbox.f(my.bbox, layer = "lossyear", ...)    
+    fetch.raster(c(my.cover.files, my.cover.files), ...)
+    if(length(my.cover.files) > 1){
+        my.raster.stats <- sapply(1:length(my.cover.files), function (i) {
+            average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files[i], my.loss.file = my.loss.files[i])
+        }, simplify = FALSE)
+        ## If any element is NULL remove it
+        these.are.null <- which(sapply(my.raster.stats, is.null))
+        if(length(these.are.null) > 0) {
+            ## assume not all of them are null
+            my.raster.stats <- my.raster.stats[-these.are.null]
+        }
+        ## create a weighted mean
+        weights <- as.vector(prop.table(unlist(sapply(seq(from = 1, to = length(my.raster.stats)), function(i) { my.raster.stats[[i]][1] }))))
+        ## restructure so that we don't need to know the number of tiff-files were used
+        my.data <- Reduce(cbind, sapply(1:length(my.raster.stats), function(i) { my.raster.stats[[i]][[2]] }, simplify = FALSE))
+        weighted.means <- sapply(1:nrow(my.data), function(i) {
+            round(weighted.mean(x = unlist(my.data[i, ]), w = weights), 16)
+        })
+        names(weighted.means) <- paste0("t", 0:(length(weighted.means)-1))
+        my.raster.stats <- list(size = sum(unlist(sapply(seq(from = 1, to = length(my.raster.stats)), function(i) { my.raster.stats[[i]][1] }))),
+                                coverage = weighted.means)
+    } else {
+        my.raster.stats <- average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files, my.loss.file = my.loss.files, ...)
+    }
+    absolute.loss.per.year <- sapply(1:(length(my.raster.stats$coverage)-1), function(i) { my.raster.stats$coverage[["t0"]] - my.raster.stats$coverage[[paste0("t", i)]] })
+    temporal.loss <- cbind(data.table::data.table(region = names(dhs.grid)[index],
+                                                  size = geosphere::areaPolygon(polygon),
+                                                  coverage.at.t0 = my.raster.stats$coverage[["t0"]]), t(data.frame(absolute.loss.per.year)))
+    globallivingconditions::my.log.f(paste(Sys.time(), "Ready with temporal loss for region", names(dhs.grid)[index]), "deforestation.log")
+    return(temporal.loss)
+}
+@ 
+
+Try it out by plotting the first region in the grid, which happens to be a region in Senegal, see figure \vref{fig:test-get-raster}.
+
+<<test-get-raster, fig.cap = "Testing the functionality to get a raster given a polygon. This area covers Dakar in Senegal.", fig.width = 6, fig.height = 4>>=
+library(raster)
+plot(load.raster.from.disk(dhs.grid[1], deforestation.path = deforestation.path), zlim = c(0, 100))
+plot(dhs.grid[1], add = TRUE)
+@ 
+
+Taking the mean value is easy enough. To see that the mean carries some signal, plot the mean values of all regions in Senegal, and compare that with the raw version. First plot the raw data, see figure \vref{fig:raw-data-senegal}.
+
+<<raw-data-senegal, fig.cap = "Raw data downsample by factor 100.", fig.width = 7, fig.height = 5.5>>=
+these.regions <- which(substring(names(dhs.grid), 1, 4) == "686.")
+my.f <- function(x, y) { raster::merge(x, y, tolerance = 1) }
+my.g <- function(i) {
+    my.raster <- load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)
+    raster::aggregate(my.raster, 75) }
+## parallelise if on unix
+if(.Platform$OS.type == "unix") {
+    n.cores <- parallel::detectCores()-1
+    foo <- parallel::mclapply(these.regions, my.g, mc.cores = n.cores)
+} else {
+    foo <- sapply(these.regions, my.g)
+}
+bar <- Reduce(my.f, foo)
+plot(bar, col = rev(terrain.colors(101)), zlim = c(0, 100), main="Senegal")
+lines(get.border(686))
+@ 
+
+Now compare with a graph where the mean values are plotted for each region in Senegal, see figure \vref{fig:testing-means}. This figure is constructed with «spplot()« which is useful plotting monochrome regions, in contrast to the raw data which was a «raster« object.
+
+<<testing-means, fig.cap = "Plotting the mean values of regions instead of mean values of pixels.">>=
+my.means <- sapply(these.regions, function(i) {
+    mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
+})
+my.spdf <- sp::SpatialPolygonsDataFrame(dhs.grid[these.regions], data = data.frame(mean.coverage.in.year.2000 = my.means), match.ID = FALSE)
+sp::spplot(my.spdf, col=NA, col.regions=rev(terrain.colors(101)), at = seq(0, 100, 1), scales = list(draw = TRUE), main = "Senegal", sp.layout = list(sf::as_Spatial(get.border(686)), col = "black"))
+@
+
+Test that merging parts from different tiff files works, by plotting a country that is known to require more than one tiff-file.
+
+<<raw-data-merging-guinea, fig.cap = "Testing merging multiple tiff-files, Raw data downsampled by factor 25. The dashed lines indicate the borders of the four tiff-files that this image was calculated from.", fig.width = 7, fig.height = 6>>=
+these.regions <- which(substring(names(dhs.grid), 1, 4) == "324.")
+my.f <- function(x, y) { raster::merge(x, y, tolerance = 1) }
+my.g <- function(i) { raster::aggregate(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path), 25) }
+## parallelise if on unix
+if(.Platform$OS.type == "unix") {
+    ## be wary that RAM can be exhausted if this is parallelized too aggressively
+    foo <- parallel::mclapply(these.regions, my.g, mc.cores = parallel::detectCores()/2)
+} else {
+    foo <- sapply(these.regions, my.g)
+}
+bar <- Reduce(my.f, foo)
+plot(bar, col = rev(terrain.colors(101)), zlim = c(0, 100), main="Guinea")
+plot(sf::as_Spatial(get.border(324)), add = TRUE)
+abline(h=10, lty = 2)
+abline(v=-10, lty = 2)
+@ 
+
+<<testing-merging-means, fig.cap = "Testing merging multiple tiff-files. Plotting the mean values of regions instead of mean values of pixels.">>=
+if(.Platform$OS.type == "unix") {
+    my.means <- unlist(parallel::mclapply(these.regions, function(i) {
+        mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
+    }, mc.cores = parallel::detectCores()/2))
+} else {
+    my.means <- sapply(these.regions, function(i) {
+        mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
+    })
+}
+my.spdf <- sp::SpatialPolygonsDataFrame(dhs.grid[these.regions], data = data.frame(mean.coverage.in.year.2000 = my.means), match.ID = FALSE)
+## sp::spplot(my.spdf, col=NA, col.regions=rev(terrain.colors(101)), at = seq(0, 100, 1), scales = list(draw = TRUE), main = "Guinea", sp.layout = list(sf::as_Spatial(get.border(324)), col = "black"))
+
+# The border
+border_sp <- sf::as_Spatial(get.border(324))
+
+# Create a horizontal line at latitude 10
+hline <- SpatialLines(list(Lines(list(Line(cbind(c(-180, 180), c(10, 10)))), ID = "hline")))
+
+# Create a vertical line at longitude -10
+vline <- SpatialLines(list(Lines(list(Line(cbind(c(-10, -10), c(-90, 90)))), ID = "vline")))
+
+# Plot
+spplot(my.spdf,
+       col = NA,
+       col.regions = rev(terrain.colors(101)),
+       at = seq(0, 100, 1),
+       scales = list(draw = TRUE),
+       main = "Guinea",
+       sp.layout = list(
+         list("sp.lines", border_sp, col = "black"),
+         list("sp.lines", hline, lty = 2),   # Add horizontal dashed line
+         list("sp.lines", vline, lty = 2)    # Add vertical dashed line
+       )
+)
+
+@
+
+<<easy.ones>>=
+temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index, ...) {
+    ## if index is a vector, be smart, otherwise just call temporal.loss.directly.from.possible.multiple.files
+    globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.for.multiple.areas.from.a.single.grid.cell called with a vector argument", paste(index, collapse = ", ")), "deforestation.log")
+    if(length(index) == 1){
+        globallivingconditions::my.log.f(paste(Sys.time(), "Error: temporal.loss.for.multiple.areas.from.a.single.grid.cell called with a scalar argument", index), "deforestation.log")        
+        return(NULL)
+        ## return(temporal.loss.directly.from.possible.multiple.files(index, ...))
+    }
+    ## A single grid cells covers multiple areas.
+    ## Verify that
+    my.cover.files <- sapply(index, function(i) {
+        file.name.from.bbox.f(sp::bbox(dhs.grid[i]), layer = "treecover2000", ...)
+    })
+    if(length(table(my.cover.files)) > 1) {
+        globallivingconditions::my.log.f(paste(Sys.time(), "Error: temporal.loss.for.multiple.areas.from.a.single.grid.cell called with a vector argument but not all cover files are identical", paste(index, collapse = ", ")), "deforestation.log")
+        return(NULL)
+    }
+    my.loss.files <- file.name.from.bbox.f(sp::bbox(dhs.grid[index[1]]), layer = "lossyear", ...)
+    fetch.raster(c(my.cover.files, my.loss.files), ...)
+    ## load the grid cells
+    my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.files[1]))
+    my.loss.raster <- raster::raster(paste0(deforestation.path, my.loss.files[1]))
+
+    my.f <- function(i) {
+        polygon <- dhs.grid[i]
+        my.years = 1:21
+        ## replicate stuff from temporal loss directly from single file
+        loss <- raster::values(raster::mask(raster::crop(my.loss.raster, polygon), polygon))
+        these.are.within.the.area <- which(is.na(loss) == FALSE)
+        these.were.lost.indices <- which(loss > 0)
+        size <- length(these.are.within.the.area)
+        these.were.lost.values <- loss[these.were.lost.indices]
+        rm(loss); trash <- gc(verbose = FALSE)        
+        raster::removeTmpFiles(h=0)
+        coverage <- raster::values(raster::mask(raster::crop(my.cover.raster, polygon), polygon))[these.are.within.the.area]
+        raster::removeTmpFiles(h=0)
+        average.coverage.at.t0 <- mean(coverage)    
+
+        my.g <- function(year) {
+            these.cells.lost.this.year.or.earlier <- these.were.lost.indices[which(these.were.lost.values <= year)]
+            if(length(these.cells.lost.this.year.or.earlier) > 0){
+                return(mean(c(coverage[-these.cells.lost.this.year.or.earlier],
+                     rep(0, length(these.cells.lost.this.year.or.earlier))), na.rm=TRUE))
+            } else {
+                return(average.coverage.at.t0)
+            }
+        }
+        
+        average.coverage.per.year <- sapply(my.years, my.g)
+        names(average.coverage.per.year) <- paste0("t", my.years)
+        my.raster.stats <- list(size = size,
+                coverage = c(t0 = average.coverage.at.t0, average.coverage.per.year)
+                )
+        absolute.loss.per.year <- sapply(1:(length(my.raster.stats$coverage)-1), function(i) { my.raster.stats$coverage[["t0"]] - my.raster.stats$coverage[[paste0("t", i)]] })
+        globallivingconditions::my.log.f(paste(Sys.time(), "Ready with temporal loss for area", names(dhs.grid)[i]), "deforestation.log")    
+        temporal.loss <- cbind(data.table::data.table(region = names(dhs.grid)[i],
+                                                  size,
+                                                  coverage.at.t0 = my.raster.stats$coverage[["t0"]]), t(data.frame(absolute.loss.per.year)))
+    }
+    results <- sapply(index, my.f, simplify = FALSE)
+    rm(my.loss.raster, my.cover.raster); trash <- gc(verbose = FALSE)            
+    raster::removeTmpFiles(h=0)
+    return(results)
+}
+
+## For all regions, derive the necessary grid cells.
+files.required <- sapply(1:length(dhs.grid), function(i) {
+    file.name.from.bbox.f(sp::bbox(dhs.grid[i]), layer="treecover2000")
+})
+
+files.requiring.single.grid.cell <- which(sapply(files.required, length) == 1)
+files.requiring.multiple.grid.cells <- which(sapply(files.required, length) > 1)
+
+files.required.string <- sapply(1:length(dhs.grid), function(i) {
+    paste(file.name.from.bbox.f(sp::bbox(dhs.grid[i]), layer="treecover2000"), collapse = ", ")
+})
+
+files.required.unique.string <- unique(files.required.string)
+files.required.unique <- unique(files.required)
+    
+
+## Categorise regions based on the files the require.
+categories.of.requirements <- sapply(unique(files.required.unique.string), function(required.files) {
+    which(files.required.string == required.files)
+})
+
+single.tiff.file.area.requirements <- categories.of.requirements[which(sapply(files.required.unique, length) == 1)]
+multiple.areas.depends.on.same.single.tiff <- single.tiff.file.area.requirements[which(sapply(single.tiff.file.area.requirements, length) > 1)]
+
+## Start with areas that share a single grid cell.
+
+cl <- snow::makeCluster(parallel::detectCores()-1, type = "SOCK")
+library(doParallel)
+doParallel::registerDoParallel(cl)
+snow::clusterExport(cl, c("base.url", "dhs.grid", "deforestation.path", "raster.from.file.f", "point.at.corners.f", "url.from.point.f", "url.from.file.f", "file.name.from.bbox.f",
+                          "fetch.raster", "average.coverage.over.time.directly.from.single.file", "temporal.loss.directly.from.possible.multiple.files"))
+easy.ones <- data.table::rbindlist(foreach::foreach(
+            j=1:length(multiple.areas.depends.on.same.single.tiff),
+            .packages=c("sp"),
+            .inorder=FALSE
+            ) %dopar% {
+           my.data.table <- try(data.table::rbindlist(temporal.loss.for.multiple.areas.from.a.single.grid.cell(multiple.areas.depends.on.same.single.tiff[[j]])), silent = TRUE)
+           if(length(attr(my.data.table, which = "condition")) > 0){
+               globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.for.multiple.areas.from.a.single.grid.cell... failed on element", j), "deforestation.log")
+               return(NULL)
+           }
+           return(my.data.table)
+                })
+stopCluster(cl)
+
+## do the rest of the areas
+remaining.ones <- (1:length(dhs.grid))[-unlist(multiple.areas.depends.on.same.single.tiff)]
+
+## Split tasks by RAM requirements
+area.sizes <- geosphere::areaPolygon(dhs.grid[remaining.ones])
+my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 0.7, 0.95, 0.99, 1.0))
+areas.by.size.classes <- sapply(1:(length(my.thresholds)-1), function(i) {
+    remaining.ones[which(area.sizes > my.thresholds[i] &
+          area.sizes <= my.thresholds[i+1])] })
+
+n.cores <- parallel::detectCores()
+parallelization.settings <- c(n.cores-1, floor(n.cores/2), max(floor(n.cores/4), 3), 2, 1)
+
+average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, ...){
+    ## calculate size,  number of lost cells, per year.
+    ## depends on raster.from.file.f()
+
+    my.years = 1:21
+
+    ## my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon, ...)
+    my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon)
+    loss <- raster::values(my.loss.raster)
+    these.are.within.the.area <- which(is.na(loss) == FALSE)
+    size <- length(these.are.within.the.area)
+    if(size == 0){
+        globallivingconditions::my.log.f(paste(Sys.time(), "found and an area of size 0, returning NULL"), "deforestation.log")    
+        return(NULL)
+    } else {
+        globallivingconditions::my.log.f(paste(Sys.time(), "found and an area of size", size), "deforestation.log")        
+    }
+    these.were.lost.indices <- which(loss > 0)
+    these.were.lost.values <- loss[these.were.lost.indices]
+    rm(loss, my.loss.raster); trash <- gc(verbose = FALSE)
+    raster::removeTmpFiles(h=0)
+
+    ## my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon, ...)
+    my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon)
+    coverage <- raster::values(my.cover.raster)[these.are.within.the.area]
+    rm(my.cover.raster); trash <- gc(verbose = FALSE)
+    raster::removeTmpFiles(h=0)
+    average.coverage.at.t0 <- mean(coverage)    
+    ## The strategy is to calculate a new average for each year.
+    ## And the final measure is the difference in these averages.
+
+    my.f <- function(year) {
+        these.cells.lost.this.year.or.earlier <- these.were.lost.indices[which(these.were.lost.values <= year)]
+        ## calculate the new mean by adding zeros for all the lost cells, and removing the elements at those indices.
+        if(length(these.cells.lost.this.year.or.earlier) > 0){
+            ## since these.cells.lost.this.year.or.earlier are relative to these.were.lost,
+            ## don't forget to include these.were.lost at next row.
+            return(mean(c(coverage[-these.cells.lost.this.year.or.earlier],
+                          rep(0, length(these.cells.lost.this.year.or.earlier))), na.rm=TRUE))
+            ## <- na.rm=TRUE to handle pixels outside the region.
+        } else {
+            ## No loss has occured yet.
+            return(average.coverage.at.t0)
+        }
+    }
+    ## parallelise if on unix
+    if(.Platform$OS.type == "unix") {
+        n.cores <- floor((parallel::detectCores()-1) * min(1, 1E8/size))
+        globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for an area of size: ", size), "deforestation.log")    
+        average.coverage.per.year <- parallel::mclapply(my.years, my.f, mc.cores = n.cores)
+    } else {
+        average.coverage.per.year <- sapply(my.years, my.f)
+    }
+    names(average.coverage.per.year) <- paste0("t", my.years)
+    globallivingconditions::my.log.f(paste(Sys.time(), "Ready with temporal loss for an area of size", size, "for a polygon of size ",
+                                           geosphere::areaPolygon(polygon)), "deforestation.log")    
+    rm(polygon, my.cover.file, my.loss.file, coverage); gc(verbose = FALSE)
+    raster::removeTmpFiles(h=0)
+    return(list(size = size,
+                coverage = c(t0 = average.coverage.at.t0, average.coverage.per.year)
+                ))
+}
+
+temporal.loss.directly.from.possible.multiple.files <- function(index, ...){
+    ## index refers to dhs.grid
+    polygon <- dhs.grid[index]
+    my.bbox <- sp::bbox(polygon)
+    my.cover.files <- file.name.from.bbox.f(my.bbox, layer = "treecover2000", ...)
+    my.loss.files <- file.name.from.bbox.f(my.bbox, layer = "lossyear", ...)    
+    fetch.raster(c(my.cover.files, my.loss.files), ...)
+    if(length(my.cover.files) > 1){
+        my.raster.stats <- sapply(1:length(my.cover.files), function (i) {
+            average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files[i], my.loss.file = my.loss.files[i])
+        }, simplify = FALSE)
+        ## If any element is NULL remove it
+        these.are.null <- which(sapply(my.raster.stats, is.null))
+        if(length(these.are.null) > 0) {
+            ## assume not all of them are null
+            my.raster.stats <- my.raster.stats[-these.are.null]
+        }
+        ## if there are still more than one element, then create a weighted mean
+        if(length(my.raster.stats) > 1){
+            weights <- as.vector(prop.table(unlist(sapply(seq(from = 1, to = length(my.raster.stats)), function(i) { my.raster.stats[[i]][1] }))))
+            ## restructure so that we don't need to know the number of tiff-files were used
+            my.data <- Reduce(cbind, sapply(1:length(my.raster.stats), function(i) { my.raster.stats[[i]][[2]] }, simplify = FALSE))
+            weighted.means <- sapply(1:nrow(my.data), function(i) {
+                round(weighted.mean(x = unlist(my.data[i, ]), w = weights), 16)
+            })
+            names(weighted.means) <- paste0("t", 0:(length(weighted.means)-1))
+            my.raster.stats <- list(size = sum(unlist(sapply(seq(from = 1, to = length(my.raster.stats)), function(i) { my.raster.stats[[i]][1] }))),
+                                    coverage = weighted.means)
+        } else {
+            ## just flatten
+            my.raster.stats <- my.raster.stats[[1]]
+        }
+    } else {
+        my.raster.stats <- average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files, my.loss.file = my.loss.files, ...)
+    }
+    absolute.loss.per.year <- sapply(1:(length(my.raster.stats$coverage)-1), function(i) { my.raster.stats$coverage[["t0"]] - my.raster.stats$coverage[[paste0("t", i)]] })
+    temporal.loss <- cbind(data.table::data.table(region = names(dhs.grid)[index],
+                                                  size = geosphere::areaPolygon(polygon),
+                                                  coverage.at.t0 = my.raster.stats$coverage[["t0"]]), t(data.frame(absolute.loss.per.year)))
+    globallivingconditions::my.log.f(paste(Sys.time(), "Ready with temporal loss for region", names(dhs.grid)[index]), "deforestation.log")
+    return(temporal.loss)
+}
+
+my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes), function(i){
+    globallivingconditions::my.log.f(paste(Sys.time(), "Starting processing files in size class", i), "deforestation.log")    
+    cl <- snow::makeCluster(parallelization.settings[i], type = "SOCK")
+    doParallel::registerDoParallel(cl)
+    snow::clusterExport(cl, c("base.url", "dhs.grid", "deforestation.path", "raster.from.file.f", "point.at.corners.f", "url.from.point.f", "url.from.file.f", "file.name.from.bbox.f",
+                              "fetch.raster", "average.coverage.over.time.directly.from.single.file", "temporal.loss.directly.from.possible.multiple.files"))
+    results <- data.table::rbindlist(foreach::foreach(
+                        j=areas.by.size.classes[[i]],
+                        .packages=c("sp")
+                        ) %dopar% {
+                            my.data.table <- try(temporal.loss.directly.from.possible.multiple.files(j), silent = TRUE)
+                            if(length(attr(my.data.table, which = "condition")) > 0){
+                                globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.directly.from.possible... failed on element", j, "in class", i), "deforestation.log")
+                                return(NULL)
+                            }
+                            return(my.data.table)
+                        })
+    stopCluster(cl)
+    globallivingconditions::my.log.f(paste(Sys.time(), "Finished processing files in size class", i, "about to return an object of class:", class(results)[1]), "deforestation.log")    
+    return(results)
+}, simplify = FALSE))
+
+@ 
+
+Merge the results
+
+<<merge.results>>=
+library(data.table)
+temporal.loss <- rbind(easy.ones, my.means)
+names(temporal.loss)[match("region", names(temporal.loss))] <- "superClusterID"
+my.dt <- get(load(file = "living-conditions.RData"))
+data.table::setkey(my.dt, superClusterID)
+data.table::setkey(temporal.loss, superClusterID)
+my.dt.with.temporal.loss <- merge(my.dt, temporal.loss)
+
+## add forest class
+my.dt.with.temporal.loss[, forest.class := cut(coverage.at.t0, 
+                               breaks = c(0, 5, 10, 20, 40, 100),
+                               include.lowest = TRUE), ]
+
+## add loss at year of interview
+my.dt.with.temporal.loss$loss.at.year.of.interview = NA
+for(t in 1:21){
+    these.cases <- which(my.dt.with.temporal.loss$year.of.interview == 2000 + t)
+    this.column.name <- paste0("V", t)
+    foo <- my.dt.with.temporal.loss[these.cases, this.column.name, with = FALSE]
+    my.dt.with.temporal.loss$loss.at.year.of.interview[these.cases] <- foo[[this.column.name]]
+}
+
+
+dep.subset.f <- function(var.name){
+    ## To control for the sampling noise, include the average education in year for the persons that were between 24 and 44 years old in year 2000
+    ## This group is stable through the study period (at the end the oldes are 65 years old, still included if alive)              
+    ## We here make use of the fact the education is a stable feature in the sense it can not be lost. It can be improved, but that should be so uncommon that it should not affect the analyses at all.
+    ## By including this average, the model can ascribe some part of the variation in the outcome over time in the same area to variation in the educational average, which means that the persons surveyed differed, and reduce the 
+    ## problem of sampling noise.
+
+    ## For every gadm area and year of interview, select the persons in the right age interval (24-44 in 2000), so
+    ## youngest = year.of.interview - 2000 + 24
+    ## oldest = year.of.interview - 2000 + 444
+
+    my.dt.with.temporal.loss$dep.var <- my.dt.with.temporal.loss[[var.name]]
+
+    foo <- my.dt.with.temporal.loss[, list(
+        year.of.interview,
+	age,
+	education.in.years,
+        superClusterID,
+        source), ]
+    bar <- foo[age >= year.of.interview - 2000 + 24 & age <= year.of.interview - 2000 + 44, ]
+    ## For every gadm.area and source, calculate the average years of education.
+    educational.data <- bar[, list(average.years.of.education.for.the.1956.1976.cohort = mean(education.in.years, na.rm = TRUE)), by = list(superClusterID, source)]
+
+    ## select cases with non-missing value on the deprivation after calculating the educational data, since food deprivation is only measured on children below 5 and education is only calculate for adults above 23.
+    these <- which(is.na(my.dt.with.temporal.loss[[var.name]]) == FALSE &
+                   is.na(my.dt.with.temporal.loss$loss.at.year.of.interview) == FALSE
+                   )
+
+    ## if data collection happened over two different years, then there are two separate lines.
+    ## merge these and take the mean year.
+
+
+    output.dt <- my.dt.with.temporal.loss[these, list(
+        deprived = sum(length(which(dep.var))),
+        raw.year = mean(year.of.interview),
+        loss.at.year.of.interview = mean(loss.at.year.of.interview),
+        not.deprived = sum(.N) - sum(length(which(dep.var))),
+        country = unique(globallivingconditions::iso.3166$String[match(country.code.ISO.3166.alpha.3, globallivingconditions::iso.3166$numeric)]),
+        forest.class = unique(forest.class)), by = list(superClusterID, source)]
+    
+    output.dt[, year := scale(raw.year), ]
+    setkey(output.dt, country, raw.year)
+    output.dt.1 <- merge(output.dt, country.data)
+    output.dt.1$country <- factor(output.dt.1$country)
+    output.dt.1[, GDP.z := scale(GDP), ]
+
+    setkey(output.dt.1, superClusterID, source)
+    setkey(educational.data, superClusterID, source)    
+    output.dt.2 <- merge(output.dt.1, educational.data)
+
+    output.dt.2[, average.years.of.education.for.the.1956.1976.raw := average.years.of.education.for.the.1956.1976.cohort, ]    
+    output.dt.2[, average.years.of.education.for.the.1956.1976.cohort := scale(average.years.of.education.for.the.1956.1976.cohort), ]
+
+    output.dt.2$superClusterID <- factor(output.dt.2$superClusterID)
+
+    return(output.dt.2)
+}
+my.deps <- c("severe.shelter.deprivation", "severe.water.deprivation", "severe.food.deprivation", "severe.sanitation.deprivation")
+data.sets <- sapply(my.deps, dep.subset.f, simplify = FALSE)
+save(my.dt.with.temporal.loss, file = "my.dt.with.temporal.loss.RData")
+rm(my.dt, my.dt.with.temporal.loss, easy.ones, my.means)
+gc(verbose=FALSE)
+
+@
+
+<<continued.for.the.extract, echo = FALSE>>=
+test.dt <- data.sets[[match("severe.shelter.deprivation", my.deps)]]
+@ 
+
+The basic unit in the data set is a rather small administrative area, on average there are \Sexpr{round(length(dhs.grid) / length(country.codes))} such areas in each country in the data set. For each DHS wave, area and type of deprivation, we aggregate the number of deprived persons, and the total number of surveyed persons, which in most areas gives repeated measurements. The data on deforestation and the country level variables are available for every year, and is merged to a single dataset. In addition we also use the larger top level regions in each country, and the whole country to get two baselines for the change in deprivation of time. These baselines are useful in that they make sure that the signal picked up by the regression terms for deforestation is uncorrelated to trends that are shared by local areas that differ in level of deforestation.
+
+Table \vref{tab:data} provides an excerpt from the data set that includes data on severe shelter deprivations, containing \Sexpr{nrow(test.dt)} data points about \Sexpr{length(unique(test.dt$superClusterID))} unique areas.
+
+<<continued.excerpt, echo = FALSE, results = "asis">>=
+library(data.table)
+foo <- test.dt[, c("loss.at.year.of.interview", 
+"GDP", "forest.class", "year", "superClusterID", "average.years.of.education.for.the.1956.1976.raw", "deprived", "not.deprived")]
+## setDT(foo)
+setkey(foo, superClusterID, year)
+colnames(foo) <- c("DF", "GDP", "FC", "year", "area", "EduY", "D.", "Non D.")
+foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
+library(xtable)
+print(xtable(foo[area == "288.2.Ashanti.Adansi North", ], digits = c(0, rep(2, 2), rep(0, 3), 2, rep(0, 2)), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana."), include.rownames = FALSE, booktabs = TRUE)
+@ 
+
+Fit models
+
+<<continued.choose.optimization>>=
+library(lme4)
+bobyqa.control <- glmerControl(optimizer = c("bobyqa", "bobyqa"))
+@
+
+<<continued.shelter>>=
+simple.dt <- data.sets[[match("severe.shelter.deprivation", my.deps)]]
+my.fit <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview * GDP.z + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+save(my.fit, file = "shelter.fit.RData")
+@
+
+For typical levels of deforestation, the effect on shelter deprivation is not significant if the deforestation takes place in a country with low GDP, see figure \vref{fig:continued-shelter}.
+
+<<continued-shelter, echo = FALSE, fig.cap = "The average effect of deforestation on severe shelter deprivation at three different levels of GDP per capita (current US dollar, z-transformed).", fig.height = 3.5, fig.width = 7>>=
+library(effects)
+my.eff <- Effect(c("GDP.z", "loss.at.year.of.interview"), my.fit, xlevels = list("GDP.z" = c(-0.85, -0.375, 1.15), loss.at.year.of.interview = seq(from = 0, to = 10, length.out = 6)))
+plot(my.eff, grid = TRUE, xlab = "Deforestation (lost coverage, parts per hundred)", ylab = "Shelter deprivation (probability)", main = "", lattice = list(layout = c(3, 1)), type = "response", rug=FALSE)
+@
+
+<<simplify.shelter, results = "asis">>=
+library(xtable)
+my.fit.simple <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview + GDP.z + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+print(xtable(anova(my.fit, my.fit.simple), caption = "Anova test for testing if the interaction term is needed for shelter deprivation."), booktabs = TRUE)
+@ 
+
+\section{Water}
+<<continued.water.fit>>=
+simple.dt <- data.sets[[match("severe.water.deprivation", my.deps)]]
+my.fit <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview * GDP.z + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+save(my.fit, file = "water.fit.RData")
+@ 
+
+<<continued-water, echo = FALSE, fig.cap = "The average effect of deforestation on severe water deprivation at three different levels of GDP per capita (current US dollar, z-transformed).", fig.height = 3.5, fig.width = 7, dependson = "continued.water.fit">>=
+library(effects)
+my.eff <- Effect(c("GDP.z", "loss.at.year.of.interview"), my.fit, xlevels = list("GDP.z" = c(-0.85, -0.375, 1.15), loss.at.year.of.interview = seq(from = 0, to = 10, length.out = 6)))
+plot(my.eff, grid = TRUE, xlab = "Deforestation (lost coverage, parts per hundred)", ylab = "Water deprivation (probability)", main = "", lattice = list(layout = c(3, 1)), type = "response", rug=FALSE)
+@
+
+<<simplify.water, results = "asis">>=
+library(xtable)
+my.fit.simple <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview + GDP.z + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+print(xtable(anova(my.fit, my.fit.simple), caption = "Anova test for testing if the interaction term is needed for water deprivation."), booktabs = TRUE)
+@ 
+
+\section{Sanitation}
+
+<<continued.sanitation.fit>>=
+simple.dt <- data.sets[[match("severe.sanitation.deprivation", my.deps)]]
+my.fit <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview * GDP.z + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+save(my.fit, file = "sanitation.fit.RData")
+@ 
+
+<<continued-sanitation, echo = FALSE, fig.cap = "The average effect of deforestation on severe sanitation deprivation at three different levels of GDP per capita (current US dollar, z-transformed).", fig.height = 3.5, fig.width = 7>>=
+library(effects)
+my.eff <- Effect(c("GDP.z", "loss.at.year.of.interview"), my.fit, xlevels = list("GDP.z" = c(-0.85, -0.375, 1.15), loss.at.year.of.interview = seq(from = 0, to = 10, length.out = 6)))
+plot(my.eff, grid = TRUE, xlab = "Deforestation (lost coverage, parts per hundred)", ylab = "Sanitation deprivation (probability)", main = "", lattice = list(layout = c(3, 1)), type = "response", rug=FALSE)
+@
+
+<<simplify.sanitation, results = "asis">>=
+library(xtable)
+my.fit.simple <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview + GDP.z + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+print(xtable(anova(my.fit, my.fit.simple), caption = "Anova test for testing if the interaction term is needed for sanitation deprivation."), booktabs = TRUE)
+@ 
+
+\section{Food}
+<<continued.food>>=
+simple.dt <- data.sets[[match("severe.food.deprivation", my.deps)]]
+my.fit <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview * GDP.z + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+save(my.fit, file = "food.fit.RData")
+@
+
+<<continued-food, echo = FALSE, dependson = "continued.food", fig.cap = "The average effect of deforestation on severe food deprivation at three different levels of GDP per capita (current US dollar, z-transformed).", fig.height = 3.5, fig.width = 7>>=
+library(effects)
+my.eff <- Effect(c("GDP.z", "loss.at.year.of.interview"), my.fit, xlevels = list("GDP.z" = c(-0.85, -0.375, 1.15), loss.at.year.of.interview = seq(from = 0, to = 10, length.out = 6)))
+plot(my.eff, grid = TRUE, xlab = "Deforestation (lost coverage, parts per hundred)", ylab = "Food deprivation (probability)", main = "", lattice = list(layout = c(3, 1)), type = "response", rug=FALSE)
+@
+
+For severe food deprivation the interaction between GDP and deforestation makes a difference (This is directly visible in figure \vref{fig:continued-food}, and also confirmed by an anova test below:
+
+<<simplify.food, results = "asis">>=
+library(xtable)
+my.fit.simple <- glmer(cbind(deprived, not.deprived) ~ loss.at.year.of.interview + average.years.of.education.for.the.1956.1976.cohort + forest.class + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | country) + (year | country), data = simple.dt, family = binomial, control = bobyqa.control)
+print(xtable(anova(my.fit, my.fit.simple), caption = "Anova test for testing if the interaction term is needed for food deprivation."), booktabs = TRUE)
+@ 
+
+OK, now that everything works for food deprivation, let us do all the deprivations in a standardized way.
+
+<<continued.automated.total.effects.clean>>=
+## red = positive, green = negative, yellow = deforestated netural, gray = not deforestated
+my.colors <- c(rgb(0.5, 0, 0, 0.3), rgb(0, 0.5, 0, 0.3), rgb(1, 1, 0, 0.3), "gray")
+
+total.effects.from.simple.dt <- function(simple.dt, my.fit, my.nsim = 2000){
+    ## simul.1 <- simple.dt[, c(2, 3, 6, 15)]
+    ## use raw year because if we know that all values are positive then we can reverse the order by multiplying wih -1
+    simul.1 <- simple.dt[, c("raw.year", "loss.at.year.of.interview", "superClusterID", "GDP.z", "average.years.of.education.for.the.1956.1976.cohort"), ]
+    ## colnames(simul.1) <- car::recode(colnames(simul.1), recodes = "'raw.year' = 'Year'; 'loss.at.year.of.interview' = 'deforestation'")
+    setkey(simul.1, superClusterID, raw.year)
+    first.deforestation.values <- simul.1[match(unique(superClusterID), superClusterID), list(superClusterID, loss.at.year.of.interview), ]
+    ## last observation from each area
+    simul.1[, raw.year.reversed := raw.year * -1, ]
+    setkey(simul.1, superClusterID, raw.year.reversed)
+    last.observation <- simul.1[match(unique(superClusterID), superClusterID), ]
+    setkey(last.observation, superClusterID)
+    last.observation[, raw.year.reversed := NULL, ]
+    last.observation.modified.1 <- copy(last.observation)
+    ## overwrite the deforestation value with the first value of deforestation.
+    last.observation.modified.1[, loss.at.year.of.interview := NULL, ]
+    setkey(first.deforestation.values, superClusterID)
+    last.observation.modified.2 <- merge(last.observation.modified.1, first.deforestation.values)
+    ## reorder the columns to match the original data
+    my.order <- match(colnames(last.observation.modified.2), colnames(last.observation))
+    setcolorder(last.observation.modified.2, my.order)
+    ## rename column names back to original
+    ## colnames(last.observation.modified.2) <- gsub("Year", "raw.year", colnames(last.observation.modified.2))
+    ## colnames(last.observation.modified.2) <- gsub("deforestation", "loss.at.year.of.interview", colnames(last.observation.modified.2))
+    ## colnames(last.observation) <- gsub("Year", "raw.year", colnames(last.observation))
+    ## colnames(last.observation) <- gsub("deforestation", "loss.at.year.of.interview", colnames(last.observation))
+
+    ## extract the invariant part of the data
+    ## invariant.data <- simple.dt[match(c("566.2.Olorunda", "466.3.Kalana"), superClusterID), list(superClusterID, superClusterIDname.1, country, forest.class), ]
+
+    ## use unique when run on the full set
+    invariant.data <- simple.dt[match(unique(superClusterID), superClusterID), list(superClusterID, country, forest.class), ]
+
+    setkey(invariant.data, superClusterID)
+    last.observation.modified.3 <- merge(last.observation.modified.2, invariant.data)
+    last.observation.2 <- merge(last.observation, invariant.data)
+
+    ## reconstruct the z-transformed year.
+    last.observation.2[, year := (raw.year - attr(simple.dt$year, "scaled:center"))/attr(simple.dt$year, "scaled:scale"), ]
+    last.observation.modified.3[, year := (raw.year - attr(simple.dt$year, "scaled:center"))/attr(simple.dt$year, "scaled:scale"), ]
+
+    ## drop the raw.year
+    last.observation.2[, raw.year := NULL]
+    last.observation.modified.3[, raw.year := NULL]
+
+    setcolorder(last.observation.2, colnames(my.fit@frame)[2:ncol(my.fit@frame)])
+    setcolorder(last.observation.modified.3, colnames(my.fit@frame)[2:ncol(my.fit@frame)])
+    ## Up to here everything comes from simple.dt
+    ## and simple.dt contain cases with missing data on forest class
+    
+    ## remove cases with NA in forest class or not present in
+    ## the model (due to having too low forest coverage at baseline)
+
+    ## Formulate the inverse operation, ie include only those which has a valid value
+    ## and is included in the model.
+
+    ## Also require multiple measurements
+
+    temp.dt <- data.table(my.fit@frame)
+    temp.dt[, single.measurement := .N == 1, by = superClusterID]
+
+    last.observation.3 <- last.observation.2[which(is.na(forest.class) == FALSE &
+                                                   is.na(average.years.of.education.for.the.1956.1976.cohort) == FALSE &
+                                               superClusterID %in% my.fit@frame$superClusterID &
+                                               superClusterID %in% temp.dt[single.measurement == FALSE, superClusterID, ]                                               
+                                               ), ]
+    
+    last.observation.modified.4 <- last.observation.modified.3[which(is.na(forest.class) == FALSE &
+                                                                     is.na(average.years.of.education.for.the.1956.1976.cohort) == FALSE &
+                                                                 superClusterID %in% my.fit@frame$superClusterID &
+                                                                 superClusterID %in% temp.dt[single.measurement == FALSE, superClusterID, ]
+                                                                 ), ]
+
+    ## test set based on with the counterfactuals, padded up to the size of the original data set
+    test.set.1 <- do.call("rbind", replicate(ceiling(1/(nrow(last.observation.modified.4)/nrow(my.fit@frame))), last.observation.modified.4, simplify = FALSE))[1:nrow(my.fit@frame), ]
+
+    ## test set based on with the observed data at the last observation, padded up to the size of the original data set
+    test.set.2 <- do.call("rbind", replicate(ceiling(1/(nrow(last.observation.3)/nrow(my.fit@frame))), last.observation.3, simplify = FALSE))[1:nrow(my.fit@frame), ]
+
+    ## simulate
+    ## simulations.1 <- simulate(object=my.fit, newdata=test.set.1, nsim = my.nsim, seed = 1123, use.u = TRUE, weights = 1000000)
+    ## simulations.2 <- simulate(object=my.fit, newdata=test.set.2, nsim = my.nsim, seed = 1123, use.u = TRUE, weights = 1000000)
+    simulations.1 <- simulate(object=my.fit, newdata=test.set.1, nsim = my.nsim, seed = 1123, use.u = TRUE)
+    simulations.2 <- simulate(object=my.fit, newdata=test.set.2, nsim = my.nsim, seed = 1123, use.u = TRUE)
+
+    ## calculate the probability
+    prob.1 <- sapply(names(simulations.1), function(x) { simulations.1[[x]][,1]/(simulations.1[[x]][,1] + simulations.1[[x]][,2]) })
+    prob.2 <- sapply(names(simulations.2), function(x) { simulations.2[[x]][,1]/(simulations.2[[x]][,1] + simulations.2[[x]][,2]) })
+
+    ## calculate the difference in probability
+    my.results <- sapply(1:nrow(last.observation.3), function(i) {
+        quantile(x = prob.2[i, ] - prob.1[i, ],
+                 probs = c(0.025, 0.5, 0.975)) 
+    })
+    ## Classify based on the sign of the effect, note this requires both the lower (x[1]) and the upper bound (x[3]) have the same sign!
+    temp.dt <- apply(t(my.results), 1, sign, simplify = FALSE)
+    negative.effect <- which(sapply(temp.dt, function(x) { x[1] == -1 & x[3] == -1 }))
+    positive.effect <- which(sapply(temp.dt, function(x) { x[1] == 1 & x[3] == 1 }))
+    ## calculate the deforestation diff
+    temp.dt <- last.observation.modified.4[, list(hypothetical.loss.at.year.of.interview = loss.at.year.of.interview), by = superClusterID]
+    temp.dt.2 <- merge(last.observation.3, temp.dt)
+    temp.dt.2[ , deforestation.diff := loss.at.year.of.interview - hypothetical.loss.at.year.of.interview, ]
+    ## add in the "positive.effect", "negative.effect" data
+    temp.dt.2$effect.class <- factor(NA, levels = c("positive", "negative", "deforested.neutral", "not.deforestated.neutral"))
+    temp.dt.2$effect.class[negative.effect] <- "negative"
+    temp.dt.2$effect.class[positive.effect] <- "positive"
+    neutral.effect <- 1:nrow(last.observation.3)
+    if(length(c(negative.effect, positive.effect)) > 0){
+        neutral.effect <- neutral.effect[-c(negative.effect, positive.effect)]
+    }
+
+    ## define "no deforestation"
+    ## This is the difference in percentages of the whole area (including the area that was not covered by forest at year 2000) that was covered by forest at the first measurement and the last measurement. Since for the most areas this is period much shorter than 21 years, say if first measurement was in 2008, and last measurement was in 2017 it would only compare forestry in those two years, and that in many areas the reference level is quite low, allow for this to be a small number. I first used 0.2, but let's try 0.1
+    no.deforestation <- 0.1
+    ## type of neutral, use 0.2 as an absolute threshold, since for other deprivations than food, rather many areas had significant effects with less than 0.2 deforestion
+    ## which is unexpected. For now, just force them to "not.deforestated.neutral"
+    
+    temp.dt.2[deforestation.diff < no.deforestation, effect.class := "not.deforestated.neutral", ]
+    temp.dt.2[intersect(neutral.effect, which(deforestation.diff >= no.deforestation)), effect.class := "deforested.neutral", ]
+    
+    ## If the probability difference would not be enough to flip one person then it is "neutral"
+    ## the prob diff times the actual population size would do the trick
+    ## effect.size.1.dt <- cbind(last.observation.3, t(my.results))
+    ## effect.size.2.dt <- effect.size.1.dt[, list(year, minimal.effect = min(abs(`2.5%`), abs(`97.5%`))), by = superClusterID]
+
+    ## pop.data <- data.table(population.size = rowSums(my.fit@frame[, 1]), my.fit@frame[, c("superClusterID", "year")])
+    ## ## the minimum effect should be able to flip one person from not deprived to deprived or vice versa
+    ## setkey(effect.size.2.dt, superClusterID, year)
+    ## setkey(pop.data, superClusterID, year)
+    ## pop.data.2 <- merge(pop.data, effect.size.2.dt, all.x = FALSE, all.y = TRUE)
+    ## pop.data.2[, real.effect := minimal.effect * population.size > 1, by = superClusterID]
+    ## setkey(pop.data.2, superClusterID, year)
+    ## setkey(temp.dt.2, superClusterID, year)
+
+    ## temp.dt.3 <- merge(temp.dt.2, pop.data.2)
+    ## temp.dt.2 <- temp.dt.3
+    ## temp.dt.2[deforestation.diff >= 0.2 & real.effect == FALSE, effect.class := "deforested.neutral", ]
+
+    foo <- temp.dt.2[, table(effect.class), by = country]
+    ## this use of table() within data.table does not record the name of the current effect.class
+    ## manually add this
+    foo$effect.class <- rep(levels(temp.dt.2$effect.class), length(unique(foo$country)))
+    ## to verify that the this was the order I looked into Zambia
+    ## temp.dt.2[country == "Zambia", table(effect.class)]
+    ## and compared with the rows in foo for Zambia
+
+    country.table <- reshape(foo,
+                             idvar = "country",
+                             timevar = "effect.class",
+                             direction = "wide")
+    colnames(country.table) <- gsub("V1.", "n.", colnames(country.table), fixed = TRUE)
+    
+    ## n.total EXCLUDES area with less than 0.2% deforestation between the first and the last measurement
+    ## probabilities for improvement, worsening, and neutral are all relative to the total of number of areas which
+    ## had at least 0.2% deforestation, while
+    ## prob.of.no.def is relative to total number of areas in the country that had at least 5% forestation at baseline
+    country.table$n.total <- apply(country.table[, c("n.positive", "n.negative", "n.deforested.neutral")], 1, sum)
+    setDT(country.table)
+    country.table[, prob.of.improvement := n.negative / n.total]
+    country.table[, prob.of.worsening := n.positive / n.total]
+    country.table[, prob.of.neutral := n.deforested.neutral / n.total]
+    country.table[, prob.of.no.def := n.not.deforestated.neutral / (n.total + n.not.deforestated.neutral)]
+    country.table <- country.table[order(prob.of.improvement, decreasing = TRUE), ]
+    colnames(country.table) <- c("Country", "Pos", "Neg", "Neu", "!Df", "Tot", "p(Imp)", "p(Wors)", "p(Neu)", "p(!Df)")
+
+    ## Ignore effect size for now
+    ## temp.dt.2$effect.size <- my.results["50%", ]
+    ## ## set the effect size to zero if the effect is not significantly different from zero.
+    ## temp.dt.2[effect.class %in% c("deforested.neutral", "not.deforestated.neutral"), effect.size := 0, ]
+
+    ## fix the area names so that they match the format of the names in the polygons object.
+    ## temp.dt.2$clean.superClusterID.names <- sapply(temp.dt.2$superClusterID, clean.filename.step.one)
+
+    ## start building the map
+    ## first create a data frame with a 1:1 relation to all.regions
+    my.df <- data.frame(superClusterID = names(dhs.grid),
+                        value = rep(NA, times = length(dhs.grid)))
+    ## fill in the results
+    my.df$value[match(temp.dt.2$superClusterID, my.df$superClusterID)] <- as.character(temp.dt.2$effect.class)
+
+    ## now to get a 1:1 relation to the actual polygons use this in combination with the map
+    ## my.full.df <- my.df[map.from.polygon.index.to.administrative.area.index, ]
+
+    my.df[, "value"] <- factor(car::recode(my.df[, "value"],
+        recodes = "'deforested.neutral' = 'neutral'; 'not.deforestated.neutral' = 'no deforestation'"),
+        levels = c("positive", "negative", "neutral", "no deforestation"))
+
+    ## now it should be easy to create the spdf
+    my.spdf <- SpatialPolygonsDataFrame(Sr=dhs.grid,
+                                        data=data.frame("Effect of deforestation" = my.df[, "value"], check.names = FALSE),
+                                        match.ID=FALSE)
+    my.st <- sf::st_as_sf(my.spdf)
+    ## ## prettyfi the category names and the label of that variable  
+    ## my.st[["effect.of.deforestation"]] <- car::recode(my.st[["effect.of.deforestation"]], recodes = "'deforested.neutral' = 'neutral'; 'not.deforestated.neutral' = 'no deforestation'")
+    ## my.st[["effect.of.deforestation"]] <- factor(my.st[["effect.of.deforestation"]], levels = c("positive", "negative", "neutral", "no deforestation"))
+    ## colnames(my.st) <- gsub("effect.of.deforestation", "Effect of deforestation", colnames(my.st))
+    return(list(my.st, country.table))
+}
+@ 
+
+<<continued-food-total, fig.width=6.45, fig.height=6.45, fig.cap = "Effects of deforestation 2000 - 2021 on food deprivation in 17 African Countries.", dpi = 400, eval=TRUE, results = "asis">>=
+library(data.table); library(tmap); library(sp); library(sf)
+my.borders <- do.call(rbind, lapply(country.codes, get.border))
+proj4string(africa) <- proj4string(sf::as_Spatial(my.borders))
+
+simple.dt <- data.sets[[match("severe.food.deprivation", my.deps)]]
+
+## restore the relevant `my.fit`
+load(file = "food.fit.RData")
+my.list <- total.effects.from.simple.dt(simple.dt, my.fit)
+## sf::st_agr(my.list[[1]]) = c("Effect of deforestation" = "constant")
+library(xtable)
+print(xtable(my.list[[2]], digits = c(0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2), label = "tab:country.table.food", caption = "18 Countries ordered by the proportion of areas in the countries in which food deprivation was decreased due to deforestation 'p(Imp)'. 'Neu' means deforestation took place but did not affect deprivation rates, while '!Df' means deforestation was essentially zero. 'Tot' does not include '!Df', and the probability for improvement p('Imp'), worsening p('Neg') and neutral p('Neu') are all based on 'Tot', unlike p(!Df) which includes all areas."), include.rownames = FALSE, booktabs = TRUE)
+## adjust the size of the graph since the title also must fit and Africa has area in the top center part
+
+bbox_new <- sf::st_bbox(sf::st_as_sf(africa))
+xrange <- bbox_new$xmax - bbox_new$xmin # range of x values
+yrange <- bbox_new$ymax - bbox_new$ymin # range of y values
+bbox_new[4] <- bbox_new[4] + (0.1 * yrange) # ymax - top
+bbox_new <- sf::st_as_sfc(bbox_new)
+
+tm_shape(my.list[[1]], bbox = bbox_new) +
+    tm_polygons("Effect of deforestation", fill.scale = tm_scale(values = my.colors, value.na = "white", label.na = ""), fill.legend = tm_legend(title = ""), lwd = 0.2) + 
+    tm_layout(title = "Effect of deforestion on food deprivation (2000-2021)",
+              title.size = 1,
+              title.position = c("center", "top")) + 
+    tm_legend(position = c("left", "bottom"), show=TRUE, text.size = 1) +
+    tm_shape(my.borders) + tm_borders(col = "red", lwd = 0.5) + 
+    tm_shape(africa) + tm_borders(col = "black", lwd = 1)
+
+@ 
+
+<<continued-shelter-total, eval = TRUE, results = "asis", fig.width=6.45, fig.height=6.45, fig.cap = "The total effect of deforestation on shelter deprivation.", dpi = 400>>=
+library(data.table); library(tmap);
+
+simple.dt <- data.sets[[match("severe.shelter.deprivation", my.deps)]]
+
+## restore the relevant `my.fit`
+load(file = "shelter.fit.RData")
+my.list <- total.effects.from.simple.dt(simple.dt, my.fit)
+library(xtable)
+print(xtable(my.list[[2]], digits = c(0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2), label = "tab:country.table.shelter", caption = paste0("18 Countries ordered by the proportion of areas in the countries in which shelter deprivation was decreased due to deforestation 'p(Imp)'. 'Neu' means deforestation took place but did not affect deprivation rates, while '!Df' means deforestation was essentially zero. 'Tot' does not include '!Df', and the probability for improvement p('Imp'), worsening p('Neg') and neutral p('Neu') are all based on 'Tot', unlike p(!Df) which includes all areas. In 5 of 17 countries with at least 0.2\\% deforestation (ie. all countries except Namibia), ie ", round(5/17 * 100), "\\% of the countries, more areas where positively affected than the number of areas that were neutral or negatively effected. In other words, in ", round((17-5)/17 * 100), "\\% of the countries more than half of the areas were not positively affected by deforestation when it comes to shelter deprivation.")), include.rownames = FALSE, booktabs = TRUE)
+## adjust the size of the graph since the title also must fit and Africa has area in the top center part
+
+tm_shape(my.list[[1]], bbox = bbox_new) +
+    tm_polygons("Effect of deforestation", fill.scale = tm_scale(values = my.colors, value.na = "white", label.na = ""), fill.legend = tm_legend(title = ""), lwd = 0.2) + 
+    ## tm_polygons("Effect of deforestation", colorNA = "white", textNA = "",
+    ##             palette = my.colors, title = "", lwd = 0.2) + 
+    tm_layout(title = "Effect of deforestion on shelter deprivation (2000-2021)",
+              title.size = 1,
+              title.position = c("center", "top")) + 
+    tm_legend(position = c("left", "bottom"), show=TRUE, text.size = 1) +
+    tm_shape(my.borders) + tm_borders(col = "red", lwd = 0.5) + 
+    tm_shape(africa) + tm_borders(col = "black", lwd = 1)
+
+@ 
+
+<<continued-water-total, eval = TRUE, results = "asis", fig.width=6.45, fig.height=6.45, fig.cap = "The total effect of deforestation on water deprivation.", dpi = 400>>=
+simple.dt <- data.sets[[match("severe.water.deprivation", my.deps)]]
+## restore the relevant `my.fit`
+load(file = "water.fit.RData")
+my.list <- total.effects.from.simple.dt(simple.dt, my.fit)
+library(xtable)
+print(xtable(my.list[[2]], digits = c(0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2), label = "tab:country.table.water", caption = paste0("19 Countries ordered by the proportion of areas in the countries in which water deprivation was decreased due to deforestation 'p(Imp)'. 'Neu' means deforestation took place but did not affect deprivation rates, while '!Df' means deforestation was essentially zero. 'Tot' does not include '!Df', and the probability for improvement p('Imp'), worsening p('Neg') and neutral p('Neu') are all based on 'Tot', unlike p(!Df) which includes all areas. In 8 of 19 countries with at least 0.2\\% deforestation (ie. all countries except Namibia), ie ", round(8/19 * 100), "\\% of the countries, more areas where positively affected than the number of areas that were neutral or negatively effected. In other words, in ", round(11/19 * 100), "\\% of the countries more than half of the areas were not positively affected by deforestation when it comes to water deprivation.")), include.rownames = FALSE, booktabs = TRUE)
+
+tm_shape(my.list[[1]], bbox = bbox_new) +
+    tm_polygons("Effect of deforestation", fill.scale = tm_scale(values = my.colors, value.na = "white", label.na = ""), fill.legend = tm_legend(title = ""), lwd = 0.2) + 
+    ## tm_polygons("Effect of deforestation", colorNA = NULL, textNA = "",
+    ##             palette = my.colors, title = "", lwd = 0.2) + 
+    tm_layout(title = "Effect of deforestion on water deprivation (2000-2021)",
+              title.size = 1,
+              title.position = c("center", "top")) + 
+    tm_legend(position = c("left", "bottom"), show=TRUE, text.size = 1) +
+    tm_shape(my.borders) + tm_borders(col = "red", lwd = 0.5) + 
+    tm_shape(africa) + tm_borders(col = "black", lwd = 1)
+
+@ 
+
+<<continued-sanitation-total, dependson='foo', results = "asis", fig.width=6.45, fig.height=6.45, fig.cap = "The total effect of deforestation on sanitation deprivation.", dpi = 400>>=
+simple.dt <- data.sets[[match("severe.sanitation.deprivation", my.deps)]]
+## restore the relevant `my.fit`
+my.fit <- get(load(file = "sanitation.fit.RData"))
+my.list <- total.effects.from.simple.dt(simple.dt, my.fit)
+library(xtable)
+print(xtable(my.list[[2]], digits = c(0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2), label = "tab:country.table.sanitation", caption = paste0("20 Countries ordered by the proportion of areas in the countries in which sanitation deprivation was decreased due to deforestation 'p(Imp)'. 'Neu' means deforestation took place but did not affect deprivation rates, while '!Df' means deforestation was essentially zero. 'Tot' does not include '!Df', and the probability for improvement p('Imp'), worsening p('Neg') and neutral p('Neu') are all based on 'Tot', unlike p(!Df) which includes all areas. In 4 of 20 countries with at least 0.2\\% deforestation (ie. all countries except Namibia), ie ", round(4/20 * 100), "\\% of the countries, more areas where positively affected than the number of areas that were neutral or negatively effected. In other words, in ", round(16/20 * 100), "\\% of the countries more than half of the areas were not positively affected by deforestation when it comes to sanitation deprivation.")), include.rownames = FALSE, booktabs = TRUE)
+
+tm_shape(my.list[[1]], bbox = bbox_new) +
+    tm_polygons("Effect of deforestation", fill.scale = tm_scale(values = my.colors, value.na = "white", label.na = ""), fill.legend = tm_legend(title = ""), lwd = 0.2) + 
+    ## tm_polygons("Effect of deforestation", colorNA = NULL, textNA = "",
+    ##             palette = my.colors, title = "", lwd = 0.2) + 
+    tm_layout(title = "Effect of deforestion on sanitation deprivation (2000-2021)",
+              title.size = 1,
+              title.position = c("center", "top")) + 
+    tm_legend(position = c("left", "bottom"), show=TRUE, text.size = 1) +
+    tm_shape(my.borders) + tm_borders(col = "red", lwd = 0.5) + 
+    tm_shape(africa) + tm_borders(col = "black", lwd = 1)
+
+@ 
+
+\end{document}
+
