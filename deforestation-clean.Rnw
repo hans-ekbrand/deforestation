@@ -259,6 +259,9 @@ if(exists("africa") == FALSE){
     africa <- terra::union(africa.mainland, madagascar)
     rm(africa.mainland, madagascar); gc(verbose = FALSE)
 }
+if(class(africa) == "PackedSpatVector"){
+    africa <- vect(africa)
+}
 @ 
 
 Create the surface covered by all countries in the sample, here called «my.window«.
