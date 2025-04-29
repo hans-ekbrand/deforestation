@@ -260,11 +260,13 @@ rm(africa.mainland, madagascar); gc(verbose = FALSE)
 Create the surface covered by all countries in the sample, here called «my.window«.
 
 <<create.the.window>>=
-my.window <- lapply(country.codes, get.border) |> ## Load borders
-    Filter(Negate(is.null), x = _) |> ## Remove NULLs
-    do.call(rbind, args = _) |> ## make one object with many polygons
-    sf::st_union() |> ## make a single polygon (keep only the outer borders)
-    terra::vect() ## convert to a terra vector object
+my.window <- country.codes |>
+  lapply(get.border) |>
+  (\(x) Filter(Negate(is.null), x))() |>
+  (\(x) do.call(rbind, x))() |>
+  sf::st_union() |>
+  terra::vect()
+
 @
 
 <<plot-the-grid, fig.cap = paste0("The administrative areas at which we calculate the level of forestation and the level of deforestation. There are ", length(dhs.grid), " administrative areas. The red line encloses the area under study, ie. white areas without black lines in them are excluded. In total the data on living conditions consists of measurements from ", n.measurement.locations, " locations . Total number of surveyed persons: ", n.persons, "."), fig.width=6.45, fig.height=6.45>>=
