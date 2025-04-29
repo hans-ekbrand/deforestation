@@ -346,27 +346,27 @@ raster.from.file.f <- function(file, my.mask, deforestation.path){
     return(r.masked)
 }
 
-load.raster.from.disk <- function(polygon, my.layer = "treecover2000", ...){
+load.raster.from.disk <- function(polygon, my.layer = "treecover2000", deforestation.path, ...){
     ## "lossyear" is the other layer of interest
     my.files <- file.name.from.bbox.f(sp::bbox(polygon), layer = my.layer)
-    fetch.raster(my.files, ...)
+    fetch.raster(my.files, deforestation.path = deforestation.path, ...)
     if(length(my.files) > 1){
-        my.raster.list <- sapply(my.files, raster.from.file.f, my.mask = polygon, ...)
+        my.raster.list <- sapply(my.files, raster.from.file.f, my.mask = polygon, deforestation.path = deforestation.path, ...)
         my.raster <- Reduce(raster::merge, my.raster.list)
     } else {
-        my.raster <- raster.from.file.f(my.files, my.mask = polygon, ...)
+        my.raster <- raster.from.file.f(my.files, my.mask = polygon, deforestation.path = deforestation.path, ...)
     }
     return(my.raster)
 }
 
-average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, ...){
+average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, deforestation.path, ...){
     ## calculate size,  number of lost cells, per year.
     ## depends on raster.from.file.f()
 
     my.years = 1:21
 
     ## my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon, ...)
-    my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon)
+    my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon, deforestation.path = deforestation.path)
     loss <- raster::values(my.loss.raster)
     these.are.within.the.area <- which(is.na(loss) == FALSE)
     size <- length(these.are.within.the.area)
@@ -376,7 +376,7 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
     raster::removeTmpFiles(h=0)
 
     ## my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon, ...)
-    my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon)
+    my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon, deforestation.path = deforestation.path)
     coverage <- raster::values(my.cover.raster)[these.are.within.the.area]
     rm(my.cover.raster); trash <- gc(verbose = FALSE)
     raster::removeTmpFiles(h=0)
@@ -416,16 +416,16 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
                 ))
 }
 
-temporal.loss.directly.from.possible.multiple.files <- function(index, ...){
+temporal.loss.directly.from.possible.multiple.files <- function(index, deforestation.path, ...){
     ## index refers to dhs.grid
     polygon <- dhs.grid[index]
     my.bbox <- sp::bbox(polygon)
-    my.cover.files <- file.name.from.bbox.f(my.bbox, layer = "treecover2000", ...)
-    my.loss.files <- file.name.from.bbox.f(my.bbox, layer = "lossyear", ...)    
-    fetch.raster(c(my.cover.files, my.cover.files), ...)
+    my.cover.files <- file.name.from.bbox.f(bbox = my.bbox, layer = "treecover2000")
+    my.loss.files <- file.name.from.bbox.f(bbox = my.bbox, layer = "lossyear")    
+    fetch.raster(c(my.cover.files, my.cover.files), deforestation.path = deforestation.path, ...)
     if(length(my.cover.files) > 1){
         my.raster.stats <- sapply(1:length(my.cover.files), function (i) {
-            average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files[i], my.loss.file = my.loss.files[i])
+            average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files[i], my.loss.file = my.loss.files[i], deforestation.path = deforestation.path)
         }, simplify = FALSE)
         ## If any element is NULL remove it
         these.are.null <- which(sapply(my.raster.stats, is.null))
@@ -552,7 +552,7 @@ spplot(my.spdf,
 @
 
 <<easy.ones>>=
-temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index, ...) {
+temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index, deforestation.path, ...) {
     ## if index is a vector, be smart, otherwise just call temporal.loss.directly.from.possible.multiple.files
     globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.for.multiple.areas.from.a.single.grid.cell called with a vector argument", paste(index, collapse = ", ")), "deforestation.log")
     if(length(index) == 1){
@@ -569,8 +569,8 @@ temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index, ...)
         globallivingconditions::my.log.f(paste(Sys.time(), "Error: temporal.loss.for.multiple.areas.from.a.single.grid.cell called with a vector argument but not all cover files are identical", paste(index, collapse = ", ")), "deforestation.log")
         return(NULL)
     }
-    my.loss.files <- file.name.from.bbox.f(sp::bbox(dhs.grid[index[1]]), layer = "lossyear", ...)
-    fetch.raster(c(my.cover.files, my.loss.files), ...)
+    my.loss.files <- file.name.from.bbox.f(sp::bbox(dhs.grid[index[1]]), layer = "lossyear", deforestation.path = deforestation.path, ...)
+    fetch.raster(c(my.cover.files, my.loss.files), deforestation.path = deforestation.path, ...)
     ## load the grid cells
     my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.files[1]))
     my.loss.raster <- raster::raster(paste0(deforestation.path, my.loss.files[1]))
