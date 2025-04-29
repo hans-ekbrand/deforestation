@@ -54,9 +54,9 @@ if(Sys.info()["sysname"] == "Windows"){
     ## SNIC
     if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
         my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"
-        country.data.path <- "~/Deforestation/Country data/"
-        deforestation.results.path <- "~/Deforestation/Results/"
-        deforestation.path <- "~/Deforestation/"
+        country.data.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/Country data/"
+        deforestation.results.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/Results/"
+        deforestation.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/"
         africa.map.path <- "~/"
     }
     ## nomad, only do this for a small set
