@@ -251,17 +251,23 @@ code.from.name <- function(name) {
 }
 @ 
 
-A polygon that covers the whole continent of interest, including countries on the contintent not included in the analysis, the object «africa« is a «SpatialPolygons« object. Use «raster::union()« to merge polygons to a single border.
+A polygon that covers the whole continent of interest, including countries on the contintent not included in the analysis, the object «africa« is a «terra« vector object, but old code furter down assumes it is a «SpatialPolygons« object, so convert into that.
+
+% «SpatialPolygons« object. Use «raster::union()« to merge polygons to a single border.
 
 <<the-whole-continent>>=
-load(paste0(africa.map.path, "africa-lowres.RData")) ## africa.mainland and madagascar, both in lowres
-if(exists("africa") == FALSE){
-    africa <- terra::union(africa.mainland, madagascar)
-    rm(africa.mainland, madagascar); gc(verbose = FALSE)
-}
+load(paste0(africa.map.path, "africa-lowres.RData"))
+## The file originally contained africa.mainland and madagascar, both in lowres
+## if(exists("africa") == FALSE){
+##     africa <- raster::union(africa.mainland, madagascar)
+##     rm(africa.mainland, madagascar); gc(verbose = FALSE)
+## }
 if(class(africa) == "PackedSpatVector"){
-    africa <- vect(africa)
+    ## Convert back to sp
+    africa <- terra::vect(africa)
 }
+library(raster)
+africa <- as(africa, "Spatial")
 @ 
 
 Create the surface covered by all countries in the sample, here called «my.window«.
