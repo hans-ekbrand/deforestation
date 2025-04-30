@@ -502,7 +502,7 @@ temp.f <- function(i) {
     mean(raster::values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
 }
 if(.Platform$OS.type == "unix") {
-    foo <- parallel::mclapply(these.regions, temp.f, mc.cores = n.cores)
+    foo <- unlist(parallel::mclapply(these.regions, temp.f, mc.cores = n.cores))
 } else {
     foo <- sapply(these.regions, temp.f)
 }
@@ -533,7 +533,7 @@ abline(v=-10, lty = 2)
 if(.Platform$OS.type == "unix") {
     my.means <- unlist(parallel::mclapply(these.regions, function(i) {
         mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
-    }, mc.cores = n.cores)
+    }, mc.cores = n.cores))
 } else {
     my.means <- sapply(these.regions, function(i) {
         mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
