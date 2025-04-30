@@ -55,7 +55,7 @@ if(Sys.info()["sysname"] == "Windows"){
         my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"
         country.data.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/Country data/"
         deforestation.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/"
-        africa.map.path <- "~/maps"
+        africa.map.path <- "~/maps/"
     }
     ## nomad, only do this for a small set
     if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
@@ -253,7 +253,7 @@ code.from.name <- function(name) {
 
 A polygon that covers the whole continent of interest, including countries on the contintent not included in the analysis, the object «africa« is a «SpatialPolygons« object. Use «raster::union()« to merge polygons to a single border.
 
-<<the-whole-continent, fig.cap = "the africa object">>=
+<<the-whole-continent>>=
 load(paste0(africa.map.path, "africa-lowres.RData")) ## africa.mainland and madagascar, both in lowres
 if(exists("africa") == FALSE){
     africa <- terra::union(africa.mainland, madagascar)
