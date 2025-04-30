@@ -676,7 +676,7 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
   my.order <- order(area.sizes, decreasing = TRUE)
   the.largest.half <- remaining.ones[my.order[1:(length(area.sizes)/2-1)]]
   the.smallest.half <- remaining.ones[my.order[(length(area.sizes)/2):length(area.sizes)]]
-  interleaved <- c(rbind(the.largest.half, rev(the.smallest.half))
+  interleaved <- c(rbind(the.largest.half, rev(the.smallest.half)))
   areas.by.size.classes <- list(interleaved[1:(length(area.sizes)/2-1)],interleaved[(length(area.sizes)/2):length(area.sizes)])
 }
 
