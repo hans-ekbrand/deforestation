@@ -77,7 +77,7 @@ if(!exists("my.waves")){
 
 @
 
-<<install.packages>>=
+<<install.packages, cache = FALSE>>=
 required.packages <- c("httr", "data.table", "car", "sp", "raster", "devtools", "purrr", "doParallel", "snow", "viridisLite", "geosphere", "parallel", "foreach", "tmap", "terra", "sf", "lme4", "parallelly")
 for(package in required.packages){
     if(!require(package, character.only=TRUE)){
@@ -263,10 +263,10 @@ load(paste0(africa.map.path, "africa-lowres.RData"))
 ##     rm(africa.mainland, madagascar); gc(verbose = FALSE)
 ## }
 if(class(africa) == "PackedSpatVector"){
-    ## Convert back to sp
     africa <- terra::vect(africa)
 }
 library(raster)
+## Convert back to sp
 africa <- as(africa, "Spatial")
 @ 
 
@@ -498,9 +498,14 @@ lines(get.border(686))
 Now compare with a graph where the mean values are plotted for each region in Senegal, see figure \vref{fig:testing-means}. This figure is constructed with «spplot()« which is useful plotting monochrome regions, in contrast to the raw data which was a «raster« object.
 
 <<testing-means, fig.cap = "Plotting the mean values of regions instead of mean values of pixels.">>=
-my.means <- sapply(these.regions, function(i) {
-    mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
+temp.f <- function(i) {
+    mean(raster::values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
 })
+if(.Platform$OS.type == "unix") {
+    foo <- parallel::mclapply(these.regions, temp.f, mc.cores = n.cores)
+} else {
+    foo <- sapply(these.regions, temp.f)
+}
 my.spdf <- sp::SpatialPolygonsDataFrame(dhs.grid[these.regions], data = data.frame(mean.coverage.in.year.2000 = my.means), match.ID = FALSE)
 sp::spplot(my.spdf, col=NA, col.regions=rev(terrain.colors(101)), at = seq(0, 100, 1), scales = list(draw = TRUE), main = "Senegal", sp.layout = list(sf::as_Spatial(get.border(686)), col = "black"))
 @
@@ -513,8 +518,7 @@ my.f <- function(x, y) { raster::merge(x, y, tolerance = 1) }
 my.g <- function(i) { raster::aggregate(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path), 25) }
 ## parallelise if on unix
 if(.Platform$OS.type == "unix") {
-    ## be wary that RAM can be exhausted if this is parallelized too aggressively
-    foo <- parallel::mclapply(these.regions, my.g, mc.cores = parallel::detectCores()/2)
+    foo <- parallel::mclapply(these.regions, my.g, mc.cores = n.cores)
 } else {
     foo <- sapply(these.regions, my.g)
 }
@@ -529,7 +533,7 @@ abline(v=-10, lty = 2)
 if(.Platform$OS.type == "unix") {
     my.means <- unlist(parallel::mclapply(these.regions, function(i) {
         mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
-    }, mc.cores = parallel::detectCores()/2))
+    }, mc.cores = n.cores)
 } else {
     my.means <- sapply(these.regions, function(i) {
         mean(values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
