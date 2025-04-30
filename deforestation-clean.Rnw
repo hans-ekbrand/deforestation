@@ -671,8 +671,8 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
   my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 1.0))
   parallelization.settings <- rep(n.cores-1, times = length(my.thresholds) - 1)
   my.order <- order(area.sizes, decreasing = TRUE)
-  the.largest.half <- my.order[1:(length(area.sizes)/2-1)]
-  the.smallest.half <- my.order[(length(area.sizes)/2):length(area.sizes)]  
+  the.largest.half <- remaining.ones[my.order[1:(length(area.sizes)/2-1)]]
+  the.smallest.half <- remaining.ones[my.order[(length(area.sizes)/2):length(area.sizes)]]
   areas.by.size.classes <- c(the.largest.half, the.smallest.half)
 }
 
