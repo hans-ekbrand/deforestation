@@ -78,7 +78,7 @@ if(!exists("my.waves")){
 @
 
 <<install.packages>>=
-required.packages <- c("httr", "data.table", "car", "sp", "raster", "devtools", "purrr", "doParallel", "snow", "viridisLite", "geosphere", "parallel", "foreach", "tmap", "terra", "sf", "lme4")
+required.packages <- c("httr", "data.table", "car", "sp", "raster", "devtools", "purrr", "doParallel", "snow", "viridisLite", "geosphere", "parallel", "foreach", "tmap", "terra", "sf", "lme4", "parallelly")
 for(package in required.packages){
     if(!require(package, character.only=TRUE)){
         install.packages(package, character.only=TRUE)
@@ -409,7 +409,7 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
     }
     ## parallelise if on unix
     if(.Platform$OS.type == "unix") {
-        n.cores <- floor((parallel::detectCores()-1) * min(1, 3E8/size))
+        n.cores <- floor((parallelly::availableCores(method = c("Slurm", "system"))-1) * min(1, 3E8/size))
         globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for an area of size: ", size), "deforestation.log")    
         average.coverage.per.year <- parallel::mclapply(my.years, my.f, mc.cores = n.cores)
     } else {
@@ -482,7 +482,7 @@ my.g <- function(i) {
     raster::aggregate(my.raster, 75) }
 ## parallelise if on unix
 if(.Platform$OS.type == "unix") {
-    n.cores <- parallel::detectCores()-1
+    n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
     foo <- parallel::mclapply(these.regions, my.g, mc.cores = n.cores)
 } else {
     foo <- sapply(these.regions, my.g)
@@ -572,13 +572,13 @@ temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index, defo
     ## A single grid cells covers multiple areas.
     ## Verify that
     my.cover.files <- sapply(index, function(i) {
-        file.name.from.bbox.f(sp::bbox(dhs.grid[i]), layer = "treecover2000", ...)
+        file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]), layer = "treecover2000")
     })
     if(length(table(my.cover.files)) > 1) {
         globallivingconditions::my.log.f(paste(Sys.time(), "Error: temporal.loss.for.multiple.areas.from.a.single.grid.cell called with a vector argument but not all cover files are identical", paste(index, collapse = ", ")), "deforestation.log")
         return(NULL)
     }
-    my.loss.files <- file.name.from.bbox.f(sp::bbox(dhs.grid[index[1]]), layer = "lossyear", deforestation.path = deforestation.path, ...)
+    my.loss.files <- file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[index[1]]), layer = "lossyear")
     fetch.raster(c(my.cover.files, my.loss.files), deforestation.path = deforestation.path, ...)
     ## load the grid cells
     my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.files[1]))
@@ -628,14 +628,14 @@ temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index, defo
 
 ## For all regions, derive the necessary grid cells.
 files.required <- sapply(1:length(dhs.grid), function(i) {
-    file.name.from.bbox.f(sp::bbox(dhs.grid[i]), layer="treecover2000")
+    file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]), layer="treecover2000")
 })
 
 files.requiring.single.grid.cell <- which(sapply(files.required, length) == 1)
 files.requiring.multiple.grid.cells <- which(sapply(files.required, length) > 1)
 
 files.required.string <- sapply(1:length(dhs.grid), function(i) {
-    paste(file.name.from.bbox.f(sp::bbox(dhs.grid[i]), layer="treecover2000"), collapse = ", ")
+    paste(file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]), layer="treecover2000"), collapse = ", ")
 })
 
 files.required.unique.string <- unique(files.required.string)
@@ -681,17 +681,17 @@ areas.by.size.classes <- sapply(1:(length(my.thresholds)-1), function(i) {
     remaining.ones[which(area.sizes > my.thresholds[i] &
           area.sizes <= my.thresholds[i+1])] })
 
-n.cores <- parallel::detectCores()
+n.cores <- parallelly::availableCores(method = c("Slurm", "system"))
 parallelization.settings <- c(n.cores-1, floor(n.cores/2), max(floor(n.cores/4), 3), 2, 1)
 
-average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, ...){
+average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, deforestation.path = deforestation.path, ...){
     ## calculate size,  number of lost cells, per year.
     ## depends on raster.from.file.f()
 
     my.years = 1:21
 
     ## my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon, ...)
-    my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon)
+    my.loss.raster <- raster.from.file.f(file = my.loss.file, my.mask = polygon, deforestation.path = deforestation.path)
     loss <- raster::values(my.loss.raster)
     these.are.within.the.area <- which(is.na(loss) == FALSE)
     size <- length(these.are.within.the.area)
@@ -707,7 +707,7 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
     raster::removeTmpFiles(h=0)
 
     ## my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon, ...)
-    my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon)
+    my.cover.raster <- raster.from.file.f(file = my.cover.file, my.mask = polygon, deforestation.path = deforestation.path)
     coverage <- raster::values(my.cover.raster)[these.are.within.the.area]
     rm(my.cover.raster); trash <- gc(verbose = FALSE)
     raster::removeTmpFiles(h=0)
@@ -731,7 +731,7 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
     }
     ## parallelise if on unix
     if(.Platform$OS.type == "unix") {
-        n.cores <- floor((parallel::detectCores()-1) * min(1, 1E8/size))
+        n.cores <- floor((parallelly::availableCores(method = c("Slurm", "system"))-1) * min(1, 1E8/size))
         globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for an area of size: ", size), "deforestation.log")    
         average.coverage.per.year <- parallel::mclapply(my.years, my.f, mc.cores = n.cores)
     } else {
@@ -747,16 +747,16 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
                 ))
 }
 
-temporal.loss.directly.from.possible.multiple.files <- function(index, ...){
+temporal.loss.directly.from.possible.multiple.files <- function(index, deforestation.path = deforestation.path, ...){
     ## index refers to dhs.grid
     polygon <- dhs.grid[index]
     my.bbox <- sp::bbox(polygon)
-    my.cover.files <- file.name.from.bbox.f(my.bbox, layer = "treecover2000", ...)
-    my.loss.files <- file.name.from.bbox.f(my.bbox, layer = "lossyear", ...)    
-    fetch.raster(c(my.cover.files, my.loss.files), ...)
+    my.cover.files <- file.name.from.bbox.f(bbox = my.bbox, layer = "treecover2000")
+    my.loss.files <- file.name.from.bbox.f(bbox = my.bbox, layer = "lossyear")    
+    fetch.raster(c(my.cover.files, my.loss.files), deforestation.path = deforestation.path, ...)
     if(length(my.cover.files) > 1){
         my.raster.stats <- sapply(1:length(my.cover.files), function (i) {
-            average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files[i], my.loss.file = my.loss.files[i])
+            average.coverage.over.time.directly.from.single.file(polygon = polygon, my.cover.file = my.cover.files[i], my.loss.file = my.loss.files[i], deforestation.path = deforestation.path)
         }, simplify = FALSE)
         ## If any element is NULL remove it
         these.are.null <- which(sapply(my.raster.stats, is.null))
