@@ -406,11 +406,14 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
             ## No loss has occured yet.
             return(average.coverage.at.t0)
         }
-    }
+      }
+
+    ## Skip this inner parallelisation now that that outer parellisation works
     ## parallelise if on unix
-    if(.Platform$OS.type == "unix") {
+    ## if(.Platform$OS.type == "unix") {    
+    if(FALSE) {
         n.cores <- floor((parallelly::availableCores(method = c("Slurm", "system"))-1) * min(1, 3E8/size))
-        globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for an area of size: ", size), "deforestation.log")    
+        globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "to calculate the yearly loss for an area of size:", size), "deforestation.log")    
         average.coverage.per.year <- parallel::mclapply(my.years, my.f, mc.cores = n.cores)
     } else {
         average.coverage.per.year <- sapply(my.years, my.f)
