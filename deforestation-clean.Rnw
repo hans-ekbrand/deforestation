@@ -256,7 +256,7 @@ A polygon that covers the whole continent of interest, including countries on th
 % «SpatialPolygons« object. Use «raster::union()« to merge polygons to a single border.
 
 <<the-whole-continent>>=
-load(paste0(africa.map.path, "africa-lowres.RData"))
+africa <- get(load(paste0(africa.map.path, "africa-lowres.RData")))
 ## The file originally contained africa.mainland and madagascar, both in lowres
 ## if(exists("africa") == FALSE){
 ##     africa <- raster::union(africa.mainland, madagascar)
