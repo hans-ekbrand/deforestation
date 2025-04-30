@@ -676,13 +676,23 @@ remaining.ones <- (1:length(dhs.grid))[-unlist(multiple.areas.depends.on.same.si
 
 ## Split tasks by RAM requirements
 area.sizes <- geosphere::areaPolygon(dhs.grid[remaining.ones])
+
+n.cores <- parallelly::availableCores(method = c("Slurm", "system"))
+
+## If RAM is plenty, then divide differently
+## This if for a RAM restricted system
 my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 0.7, 0.95, 0.99, 1.0))
+parallelization.settings <- c(n.cores-1, floor(n.cores/2), max(floor(n.cores/4), 3), 2, 1)
+
+## If RAM is practically unrestricted, just make simple split and use all cores.
+if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
+  my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 1.0))
+  parallelization.settings <- rep(n.cores-1, times = length(my.thresholds) - 1)
+}
+
 areas.by.size.classes <- sapply(1:(length(my.thresholds)-1), function(i) {
     remaining.ones[which(area.sizes > my.thresholds[i] &
           area.sizes <= my.thresholds[i+1])] })
-
-n.cores <- parallelly::availableCores(method = c("Slurm", "system"))
-parallelization.settings <- c(n.cores-1, floor(n.cores/2), max(floor(n.cores/4), 3), 2, 1)
 
 average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, deforestation.path = deforestation.path, ...){
     ## calculate size,  number of lost cells, per year.
