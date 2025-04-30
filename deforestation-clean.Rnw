@@ -725,7 +725,8 @@ average.coverage.over.time.directly.from.single.file <- function(polygon, my.cov
         }
     }
     ## parallelise if on unix
-    if(.Platform$OS.type == "unix") {
+    ## if(.Platform$OS.type == "unix") {    
+    if(FALSE) {
         n.cores <- floor((parallelly::availableCores(method = c("Slurm", "system"))-1) * min(1, 1E8/size))
         globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for an area of size: ", size), "deforestation.log")    
         average.coverage.per.year <- parallel::mclapply(my.years, my.f, mc.cores = n.cores)
