@@ -500,7 +500,7 @@ Now compare with a graph where the mean values are plotted for each region in Se
 <<testing-means, fig.cap = "Plotting the mean values of regions instead of mean values of pixels.">>=
 temp.f <- function(i) {
     mean(raster::values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
-})
+}
 if(.Platform$OS.type == "unix") {
     foo <- parallel::mclapply(these.regions, temp.f, mc.cores = n.cores)
 } else {
