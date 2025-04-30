@@ -650,28 +650,7 @@ categories.of.requirements <- sapply(unique(files.required.unique.string), funct
 single.tiff.file.area.requirements <- categories.of.requirements[which(sapply(files.required.unique, length) == 1)]
 multiple.areas.depends.on.same.single.tiff <- single.tiff.file.area.requirements[which(sapply(single.tiff.file.area.requirements, length) > 1)]
 
-## Start with areas that share a single grid cell.
-
-cl <- snow::makeCluster(parallel::detectCores()-1, type = "SOCK")
-library(doParallel)
-doParallel::registerDoParallel(cl)
-snow::clusterExport(cl, c("base.url", "dhs.grid", "deforestation.path", "raster.from.file.f", "point.at.corners.f", "url.from.point.f", "url.from.file.f", "file.name.from.bbox.f",
-                          "fetch.raster", "average.coverage.over.time.directly.from.single.file", "temporal.loss.directly.from.possible.multiple.files"))
-easy.ones <- data.table::rbindlist(foreach::foreach(
-            j=1:length(multiple.areas.depends.on.same.single.tiff),
-            .packages=c("sp"),
-            .inorder=FALSE
-            ) %dopar% {
-           my.data.table <- try(data.table::rbindlist(temporal.loss.for.multiple.areas.from.a.single.grid.cell(multiple.areas.depends.on.same.single.tiff[[j]], deforestation.path = deforestation.path)), silent = TRUE)
-           if(length(attr(my.data.table, which = "condition")) > 0){
-               globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.for.multiple.areas.from.a.single.grid.cell... failed on element", j), "deforestation.log")
-               return(NULL)
-           }
-           return(my.data.table)
-                })
-stopCluster(cl)
-
-## do the rest of the areas
+## Start with the tricky ones, those that requires multiple tiff files.
 remaining.ones <- (1:length(dhs.grid))[-unlist(multiple.areas.depends.on.same.single.tiff)]
 
 ## Split tasks by RAM requirements
@@ -683,16 +662,19 @@ n.cores <- parallelly::availableCores(method = c("Slurm", "system"))
 ## This if for a RAM restricted system
 my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 0.7, 0.95, 0.99, 1.0))
 parallelization.settings <- c(n.cores-1, floor(n.cores/2), max(floor(n.cores/4), 3), 2, 1)
-
-## If RAM is practically unrestricted, just make simple split and use all cores.
-if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
-  my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 1.0))
-  parallelization.settings <- rep(n.cores-1, times = length(my.thresholds) - 1)
-}
-
 areas.by.size.classes <- sapply(1:(length(my.thresholds)-1), function(i) {
     remaining.ones[which(area.sizes > my.thresholds[i] &
           area.sizes <= my.thresholds[i+1])] })
+
+## If RAM is practically unrestricted, just order by size (largest first), make some arbitrary split and use all cores.
+if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
+  my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 1.0))
+  parallelization.settings <- rep(n.cores-1, times = length(my.thresholds) - 1)
+  my.order <- order(area.sizes, decreasing = TRUE)
+  the.largest.half <- my.order[1:(length(area.sizes)/2-1)]
+  the.smallest.half <- my.order[(length(area.sizes)/2):length(area.sizes)]  
+  areas.by.size.classes <- c(the.largest.half, the.smallest.half)
+}
 
 average.coverage.over.time.directly.from.single.file <- function(polygon, my.cover.file, my.loss.file, deforestation.path = deforestation.path, ...){
     ## calculate size,  number of lost cells, per year.
@@ -820,7 +802,27 @@ my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes), functi
     stopCluster(cl)
     globallivingconditions::my.log.f(paste(Sys.time(), "Finished processing files in size class", i, "about to return an object of class:", class(results)[1]), "deforestation.log")    
     return(results)
-}, simplify = FALSE))
+  }, simplify = FALSE))
+
+## The easy ones - areas that share a single grid cell.
+cl <- snow::makeCluster(parallelly::availableCores(method = c("Slurm", "system")), type = "SOCK")
+library(doParallel)
+doParallel::registerDoParallel(cl)
+snow::clusterExport(cl, c("base.url", "dhs.grid", "deforestation.path", "raster.from.file.f", "point.at.corners.f", "url.from.point.f", "url.from.file.f", "file.name.from.bbox.f",
+                          "fetch.raster", "average.coverage.over.time.directly.from.single.file", "temporal.loss.directly.from.possible.multiple.files"))
+easy.ones <- data.table::rbindlist(foreach::foreach(
+            j=1:length(multiple.areas.depends.on.same.single.tiff),
+            .packages=c("sp"),
+            .inorder=FALSE
+            ) %dopar% {
+           my.data.table <- try(data.table::rbindlist(temporal.loss.for.multiple.areas.from.a.single.grid.cell(multiple.areas.depends.on.same.single.tiff[[j]], deforestation.path = deforestation.path)), silent = TRUE)
+           if(length(attr(my.data.table, which = "condition")) > 0){
+               globallivingconditions::my.log.f(paste(Sys.time(), "temporal.loss.for.multiple.areas.from.a.single.grid.cell... failed on element", j), "deforestation.log")
+               return(NULL)
+           }
+           return(my.data.table)
+                })
+stopCluster(cl)
 
 @ 
 
