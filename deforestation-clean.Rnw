@@ -60,12 +60,16 @@ if(Sys.info()["sysname"] == "Windows"){
     ## nomad, only do this for a small set
     if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
         my.dir <- "~/mnt/poverty/media/sf_Our_data/Data/DHS"
+        deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
+        africa.map.path <- "~/annex/projekt/child-poverty/statiska-eller-stora-filer/"
     }
 }
 @
 
 <<config>>=
 my.countries <- c("Senegal", "Gambia", "Guinea", "Sierra Leone", "Liberia", "Mali", "Cote d'Ivoire", "Burkina Faso", "Ghana", "Benin", "Togo", "Nigeria", "Chad", "Cameroon", "Sudan", "Ethiopia", "Sudan", "Gabon", "Congo", "Congo Democratic Republic", "Uganda", "Rwanda", "Kenya", "Tanzania", "Angola", "Malawi", "Mozambique", "Zambia", "Zimbabwe", "Namibia", "Lesotho", "South Africa", "Eswatini", "Madagascar", "Egypt", "Tunisia", "Morocco", "Burundi")
+
+my.countries <- c("Angola")
 
 if(!exists("my.countries")){
     my.countries = NULL
@@ -467,18 +471,18 @@ temporal.loss.directly.from.possible.multiple.files <- function(index, deforesta
 }
 @ 
 
-Try it out by plotting the first region in the grid, which happens to be a region in Senegal, see figure \vref{fig:test-get-raster}.
+Try it out by plotting the first region in the grid, see figure \vref{fig:test-get-raster}.
 
-<<test-get-raster, fig.cap = "Testing the functionality to get a raster given a polygon. This area covers Dakar in Senegal.", fig.width = 6, fig.height = 4>>=
+<<test-get-raster, fig.cap = "Testing the functionality to get a raster given a polygon.", fig.width = 6, fig.height = 4>>=
 library(raster)
 plot(load.raster.from.disk(dhs.grid[1], deforestation.path = deforestation.path), zlim = c(0, 100))
 plot(dhs.grid[1], add = TRUE)
 @ 
 
-Taking the mean value is easy enough. To see that the mean carries some signal, plot the mean values of all regions in Senegal, and compare that with the raw version. First plot the raw data, see figure \vref{fig:raw-data-senegal}.
+Taking the mean value is easy enough. To see that the mean carries some signal, plot the mean values of all regions in the first country in the grid, and compare that with the raw version. First plot the raw data, see figure \vref{fig:raw-data-senegal}.
 
-<<raw-data-senegal, fig.cap = "Raw data downsample by factor 100.", fig.width = 7, fig.height = 5.5>>=
-these.regions <- which(substring(names(dhs.grid), 1, 4) == "686.")
+<<raw-data-first-country, fig.cap = "Raw data downsample by factor 100.", fig.width = 7, fig.height = 5.5>>=
+these.regions <- which(substring(names(dhs.grid), 1, 4) == substring(names(dhs.grid)[1], 1, 4))
 my.f <- function(x, y) { raster::merge(x, y, tolerance = 1) }
 my.g <- function(i) {
     my.raster <- load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)
@@ -491,8 +495,8 @@ if(.Platform$OS.type == "unix") {
     foo <- sapply(these.regions, my.g)
 }
 bar <- Reduce(my.f, foo)
-plot(bar, col = rev(terrain.colors(101)), zlim = c(0, 100), main="Senegal")
-lines(get.border(686))
+plot(bar, col = rev(terrain.colors(101)), zlim = c(0, 100), main="")
+lines(get.border(substring(names(dhs.grid)[1], 1, 3)))
 @ 
 
 Now compare with a graph where the mean values are plotted for each region in Senegal, see figure \vref{fig:testing-means}. This figure is constructed with «spplot()« which is useful plotting monochrome regions, in contrast to the raw data which was a «raster« object.
