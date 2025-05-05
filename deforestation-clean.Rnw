@@ -533,18 +533,19 @@ if(.Platform$OS.type == "unix") {
     ## leave at least 9.2 GB per region to aggregate
     n.cores <- min(parallelly::availableCores(method = c("Slurm", "system"))-1,
                    floor(as.vector(benchmarkme::get_ram() / 1E9) / 9.2))
+    globallivingconditions::my.log.f(paste(Sys.time(), "n.cores=", n.cores))
     foo <- parallel::mclapply(these.regions, my.g, mc.cores = n.cores)
+    globallivingconditions::my.log.f(paste(Sys.time(), "Finished reading in rasters."))
 } else {
     foo <- sapply(these.regions, my.g)
 }
 ## Convert to terra SpatRasters, so that we can use mosaic() which is faster than merge()
 terra_list <- lapply(foo, terra::rast)
-
-## Combine into a single SpatRaster
-terra_stack <- do.call(c, terra_list)
+globallivingconditions::my.log.f(paste(Sys.time(), "Finished converting rasters to terra."))
 
 ## bar <- Reduce(my.f, foo)
-bar <- terra::mosaic(terra_stack)
+bar <- do.call(terra::mosaic, terra_list)
+globallivingconditions::my.log.f(paste(Sys.time(), "Finished with the mosaic."))
 
 plot(bar, col = rev(terrain.colors(101)), zlim = c(0, 100), main=this.country.name)
 lines(get.border(this.country.code))
