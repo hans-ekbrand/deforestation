@@ -282,18 +282,41 @@ my.window <- country.codes |>
   (\(x) Filter(Negate(is.null), x))() |>
   (\(x) do.call(rbind, x))() |>
   sf::st_union() |>
-  terra::vect()
+  sf::as_Spatial()
 
 @
 
 <<plot-the-grid, fig.cap = paste0("The administrative areas at which we calculate the level of forestation and the level of deforestation. There are ", length(dhs.grid), " administrative areas. The red line encloses the area under study, ie. white areas without black lines in them are excluded. In total the data on living conditions consists of measurements from ", n.measurement.locations, " locations . Total number of surveyed persons: ", n.persons, "."), fig.width=6.45, fig.height=6.45>>=
 plot(africa)
 plot(dhs.grid, add = TRUE, lwd = 0.05)
-lines(my.window, col = "red", lwd = 0.5)
+plot(my.window, add = TRUE, border = "red", lwd = 0.5)
+@ 
+
+To be able to plot the whole continent, create a downsampled dataset. Downsample with «aggregate()« which by default takes the mean. A factor of 100 in each dimension gives a reduction of data by 10.000/1 in two dimensions.
+
+<<downsampling>>=
+cl <- snow::makeCluster(parallelly::availableCores(method = c("Slurm", "system"))-1, type = "SOCK")
+doParallel::registerDoParallel(cl)
+snow::clusterExport(cl, c("deforestation.path"))
+
+foreach::foreach(file = list.files(path=deforestation.path, pattern = ".*treecover.*[W|E].tif", full.names=TRUE)) %dopar% {
+    new.filename <- gsub(".tif", "_small.tif", file, fixed=TRUE)
+    if(! file.exists(new.filename)){
+        temp.raster <- raster::aggregate(raster::raster(file), 100)
+        raster::writeRaster(temp.raster, filename = new.filename,
+                    datatype='INT1U')
+    }
+}
+
+stopCluster(cl)
+
 @ 
 
 <<plot-the-coverage, fig.cap = "The tree coverage in the sampled area year 2000 per pixel, ie any pixel can have any color. The raw data was downsampled 10.000 times before producing this plot.", fig.width=6.45, fig.height=6.45, dpi=300>>=
-plot(terra::mask(Reduce(terra::merge, sapply(list.files(path=deforestation.path, pattern = ".*treecover.*small.tif", full.names=TRUE), terra::rast)), my.window))
+## terra requires my.window to be a spatvector, but that is inconvenient since is to not cacheable by knitr.
+## So, make my.window a SpatialPolygons, and use raster:: instead of terra::
+## plot(terra::mask(Reduce(terra::merge, sapply(list.files(path=deforestation.path, pattern = ".*treecover.*small.tif", full.names=TRUE), terra::rast)), my.window))
+plot(raster::mask(Reduce(raster::merge, sapply(list.files(path=deforestation.path, pattern = ".*treecover.*small.tif", full.names=TRUE), raster::raster)), my.window))
 lines(africa)
 lines(my.window, col = "red", lwd = 0.5)
 @ 
@@ -506,9 +529,9 @@ temp.f <- function(i) {
     mean(raster::values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
 }
 if(.Platform$OS.type == "unix") {
-    foo <- unlist(parallel::mclapply(these.regions, temp.f, mc.cores = n.cores))
+    my.means <- unlist(parallel::mclapply(these.regions, temp.f, mc.cores = n.cores))
 } else {
-    foo <- sapply(these.regions, temp.f)
+    my.means <- sapply(these.regions, temp.f)
 }
 my.spdf <- sp::SpatialPolygonsDataFrame(dhs.grid[these.regions], data = data.frame(mean.coverage.in.year.2000 = my.means), match.ID = FALSE)
 sp::spplot(my.spdf, col=NA, col.regions=rev(terrain.colors(101)), at = seq(0, 100, 1), scales = list(draw = TRUE), main = "Senegal", sp.layout = list(sf::as_Spatial(get.border(686)), col = "black"))
@@ -839,7 +862,11 @@ stopCluster(cl)
 
 @ 
 
-Merge the results
+Before merging the results, do some imputations.
+
+Angola (2015 + 2011 (MIS) 2006-7 (MIS), Madagascar (2021, 2008-2009, 2003-2004 (no gis), 1997), South Africa (1998, 2016), Burundi (2010, 2016-17), Congo (2005, 2011-12), Congo Democratic Republic (2007, 2013-14), Gabon (2000, 2012, 2019-2021), Cote d'Ivoire (2021, 2011-12, 2005), Chad (2004 (no gis), 2014-15), Tanzania (1999, 2004-5, 2010, 2015-16, 2022), Morocco (not enough data), Egypt (2000, 2005, 2008, 2014).
+
+Merge the results.
 
 <<merge.results>>=
 library(data.table)
@@ -930,8 +957,26 @@ gc(verbose=FALSE)
 
 @
 
-<<continued.for.the.extract, echo = FALSE>>=
+\section{Shelter deprivation}
+Create a data set suitable for regression with shelter deprivation as the dependent variable.
+
+
+<<continued.for.the.extract, echo = TRUE>>=
 test.dt <- data.sets[[match("severe.shelter.deprivation", my.deps)]]
+@
+
+\subsection{Coverage for shelter}
+Show the areas for which we have complete data for shelter deprivation, and mark areas where education is missing and where there are too few measurements.
+
+<<coverage-shelter, fig.cap = "Coverage for education in the shelter deprivation dataset. Green = multiple measurements available, Red = a single measurement available, White = no measurement available.", dev = "png", dpi = 200>>=
+plot(africa)
+missing.stats <- test.dt[is.na(average.years.of.education.for.the.1956.1976.cohort) == FALSE, length(unique(raw.year)), by = superClusterID]
+these <- missing.stats[V1 > 1, match(superClusterID, names(dhs.grid))]
+plot(dhs.grid[these], col = "green", add = TRUE)
+these <- missing.stats[V1 == 1, match(superClusterID, names(dhs.grid))]
+plot(dhs.grid[these], col = "red", add = TRUE)
+my.borders <- do.call(rbind, lapply(country.codes, get.border))
+plot(my.borders, col = NA, border = "red", add = TRUE)
 @ 
 
 The basic unit in the data set is a rather small administrative area, on average there are \Sexpr{round(length(dhs.grid) / length(country.codes))} such areas in each country in the data set. For each DHS wave, area and type of deprivation, we aggregate the number of deprived persons, and the total number of surveyed persons, which in most areas gives repeated measurements. The data on deforestation and the country level variables are available for every year, and is merged to a single dataset. In addition we also use the larger top level regions in each country, and the whole country to get two baselines for the change in deprivation of time. These baselines are useful in that they make sure that the signal picked up by the regression terms for deforestation is uncorrelated to trends that are shared by local areas that differ in level of deforestation.
