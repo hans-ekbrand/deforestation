@@ -69,7 +69,7 @@ if(Sys.info()["sysname"] == "Windows"){
 <<config>>=
 my.countries <- c("Senegal", "Gambia", "Guinea", "Sierra Leone", "Liberia", "Mali", "Cote d'Ivoire", "Burkina Faso", "Ghana", "Benin", "Togo", "Nigeria", "Chad", "Cameroon", "Sudan", "Ethiopia", "Sudan", "Gabon", "Congo", "Congo Democratic Republic", "Uganda", "Rwanda", "Kenya", "Tanzania", "Angola", "Malawi", "Mozambique", "Zambia", "Zimbabwe", "Namibia", "Lesotho", "South Africa", "Eswatini", "Madagascar", "Egypt", "Tunisia", "Morocco", "Burundi")
 
-my.countries <- c("Angola")
+my.countries <- c("Tanzania")
 
 if(!exists("my.countries")){
     my.countries = NULL
