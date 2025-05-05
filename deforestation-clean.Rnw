@@ -47,6 +47,7 @@ if(Sys.info()["sysname"] == "Windows"){
     ## 245
     if(file.exists("/media/sf_Our_data/Data/DHS")){
         my.dir <- "/media/sf_Our_data/Data/DHS"
+        country.data.path <- "~/annex/projekt/global-living-conditions/statiska-eller-stora-filer/deforestation/Country data/"
         deforestation.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
         africa.map.path <- "~/annex/projekt/child-poverty/statiska-eller-stora-filer/"
     }
@@ -60,9 +61,9 @@ if(Sys.info()["sysname"] == "Windows"){
     ## nomad, only do this for a small set
     if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
         my.dir <- "~/mnt/poverty/media/sf_Our_data/Data/DHS"
+        country.data.path <- "~/annex/projekt/global-living-conditions/statiska-eller-stora-filer/deforestation/Country data/"
         deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
         africa.map.path <- "~/annex/projekt/child-poverty/statiska-eller-stora-filer/"
-        country.data.path <- "~/annex/projekt/child-poverty/statiska-eller-stora-filer/deforestation/Country data/"
     }
 }
 @
