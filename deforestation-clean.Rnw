@@ -562,7 +562,7 @@ if(.Platform$OS.type == "unix") {
     my.means <- sapply(these.regions, temp.f)
 }
 this.country.code <- substring(names(dhs.grid)[1], 1, 3)
-this.country.name <- globallivingconditions::iso.3166$String[match(this.country.code, globallivingconditions::iso.3166$numeric)]]
+this.country.name <- globallivingconditions::iso.3166$String[match(this.country.code, globallivingconditions::iso.3166$numeric)]
 my.spdf <- sp::SpatialPolygonsDataFrame(dhs.grid[these.regions], data = data.frame(mean.coverage.in.year.2000 = my.means), match.ID = FALSE)
 sp::spplot(my.spdf, col=NA, col.regions=rev(terrain.colors(101)), at = seq(0, 100, 1), scales = list(draw = TRUE), main = this.country.name, sp.layout = list(sf::as_Spatial(get.border(this.country.code)), col = "black"))
 @
