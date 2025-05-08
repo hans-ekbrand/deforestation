@@ -946,7 +946,9 @@ plot(dhs.grid[these], col = "green", add = TRUE)
 these <- missing.stats[V1 == 1, match(superClusterID, names(dhs.grid))]
 plot(dhs.grid[these], col = "red", add = TRUE)
 my.borders <- do.call(rbind, lapply(country.codes, get.border))
-plot(my.borders, col = NA, border = "red", add = TRUE)
+## Not sure if my.borders are the same when country.codes is a scalar or a vector.
+## This works when country codes is a scalar.
+plot(my.borders["GID_0"], col = NA, border = "red", add = TRUE)
 @ 
 
 The basic unit in the data set is a rather small administrative area, on average there are \Sexpr{round(length(dhs.grid) / length(country.codes))} such areas in each country in the data set. For each DHS wave, area and type of deprivation, we aggregate the number of deprived persons, and the total number of surveyed persons, which in most areas gives repeated measurements. The data on deforestation and the country level variables are available for every year, and is merged to a single dataset. In addition we also use the larger top level regions in each country, and the whole country to get two baselines for the change in deprivation of time. These baselines are useful in that they make sure that the signal picked up by the regression terms for deforestation is uncorrelated to trends that are shared by local areas that differ in level of deforestation.
@@ -962,7 +964,7 @@ setkey(foo, superClusterID, year)
 colnames(foo) <- c("DF", "GDP", "FC", "year", "area", "EduY", "D.", "Non D.")
 foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
 library(xtable)
-print(xtable(foo[area == "288.2.Ashanti.Adansi North", ], digits = c(0, rep(2, 2), rep(0, 3), 2, rep(0, 2)), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana."), include.rownames = FALSE, booktabs = TRUE)
+print(xtable(foo[1:10, ], digits = c(0, rep(2, 2), rep(0, 3), 2, rep(0, 2)), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana."), include.rownames = FALSE, booktabs = TRUE)
 @ 
 
 
