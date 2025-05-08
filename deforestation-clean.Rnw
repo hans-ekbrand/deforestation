@@ -49,7 +49,7 @@ if(Sys.info()["sysname"] == "Windows"){
         my.dir <- "/media/sf_Our_data/Data/DHS"
         country.data.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/deforestation/Country data/"
         deforestation.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
-        africa.map.path <- "~/annex/projekt/global-living-conditions/statiska-eller-stora-filer/"
+        africa.map.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/"
     }
     ## SNIC
     if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
@@ -63,7 +63,7 @@ if(Sys.info()["sysname"] == "Windows"){
         my.dir <- "~/mnt/poverty/media/sf_Our_data/Data/DHS"
         country.data.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/deforestation/Country data/"
         deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
-        africa.map.path <- "~/annex/projekt/global-living-conditions/statiska-eller-stora-filer/"
+        africa.map.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/"
     }
 }
 @
