@@ -526,9 +526,9 @@ my.g <- function(i) {
 }
 ## parallelise if on unix
 if(.Platform$OS.type == "unix") {
-    ## leave at least 9.2 GB per region to aggregate
+    ## leave at least 15.5 GB per region to aggregate
     n.cores <- min(parallelly::availableCores(method = c("Slurm", "system"))-1,
-                   floor(as.vector(benchmarkme::get_ram() / 1E9) / 9.2))
+                   floor(as.vector(benchmarkme::get_ram() / 1E9) / 15.5))
     globallivingconditions::my.log.f(paste(Sys.time(), "n.cores=", n.cores))
     foo <- parallel::mclapply(these.regions, my.g, mc.cores = n.cores)
     globallivingconditions::my.log.f(paste(Sys.time(), "Finished reading in rasters."))
