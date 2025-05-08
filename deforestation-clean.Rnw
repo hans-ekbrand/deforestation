@@ -94,34 +94,6 @@ library(devtools)
 devtools::install_github("matthewkling/colors3d")
 @
 
-
-Create a custom subset for each deprivation, including only the cases which have data on this deprivation and add country level factors. Note that these files do have non-standard values on the variable ``Country Name'', e.g. ``Tanzania'' instead of the standard compliant ``United Republic of Tanzania'', so use the three letter code instead of the name when merging data. The existing code uses the country name, create a new variable ``Country Name'' using the mapping in the dataset «iso.3166«, which is part of «globallivingconditions«.
-
-<<continued.country>>=
-library("readxl"); library(data.table)
-country.data <- Reduce(merge, sapply(c("API_NY.GDP.PCAP.CD_DS2_en_excel_v2_5795829.xlsx", "API_NE.EXP.GNFS.ZS_DS2_en_excel_v2_5728793.xlsx", "API_NV.AGR.TOTL.ZS_DS2_en_excel_v2_5728821.xlsx", "API_SP.POP.1564.TO_DS2_en_excel_v2_5731200.xlsx"), function(x) {
-    temp.dt.1 <- data.table(read_excel(paste0(country.data.path, x), skip = 2))
-    meta.data <- temp.dt.1[["Indicator Name"]][1]
-    temp.dt.1[, c("Indicator Name", "Indicator Code", "Country Name") := NULL, ]
-    temp.dt.2 <- melt(temp.dt.1, id.vars = "Country Code", variable.name = "raw.year", value.name = meta.data)
-    temp.dt.2[, raw.year := as.numeric(as.character(temp.dt.2$raw.year)), ]
-    ## Create a prober name, based on the tree letter code
-    temp.dt.2[, country := iso.3166$String[match(`Country Code`, iso.3166$String.code)], ]
-    ## Drop the three letter code.
-    temp.dt.2[, `Country Code` := NULL, ]
-    ## Drop cases that has missing data on the identifier variables.
-    temp.dt.3 <- temp.dt.2[is.na(country) == FALSE, ]
-    setkey(temp.dt.3, country, raw.year)
-    return(temp.dt.3)
-}, simplify = FALSE))
-## improve some var names
-bad.names <- c("GDP per capita (current US$)", "Exports of goods and services (% of GDP)", "Agriculture, forestry, and fishing, value added (% of GDP)", "Population ages 15-64, total")
-nice.names <- c("GDP", "percent.goods.and.services.percent.of.gdp", "agriculture.forestry.percent.of.gdp", "population.15.64")
-for(i in 1:length(bad.names)){
-    colnames(country.data) <- gsub(bad.names[i], nice.names[i], colnames(country.data), fixed = TRUE)
-}
-@
-
 Each subset includes the average education in years for the adults aged 24-44 in year 2000 and aged 45-65 in year 2021, in order for us to be able to estimate how different the group surveyed in one year is from the group surveyed another year (in the same area), even if the educational level is increasing during the study period. By focussing on the persons who have already aquired their education when the study starts, we make use of the invariant feature of education, it is never lost.
 
 
@@ -162,6 +134,33 @@ n.persons <- nrow(my.dt)
 rm(my.dt)
 gc(verbose=FALSE)
 
+@
+
+Create a custom subset for each deprivation, including only the cases which have data on this deprivation and add country level factors. Note that these files do have non-standard values on the variable ``Country Name'', e.g. ``Tanzania'' instead of the standard compliant ``United Republic of Tanzania'', so use the three letter code instead of the name when merging data. The existing code uses the country name, create a new variable ``Country Name'' using the mapping in the dataset «iso.3166«, which is part of «globallivingconditions«.
+
+<<continued.country>>=
+library("readxl"); library(data.table); library(globallivingconditions)
+country.data <- Reduce(merge, sapply(c("API_NY.GDP.PCAP.CD_DS2_en_excel_v2_5795829.xlsx", "API_NE.EXP.GNFS.ZS_DS2_en_excel_v2_5728793.xlsx", "API_NV.AGR.TOTL.ZS_DS2_en_excel_v2_5728821.xlsx", "API_SP.POP.1564.TO_DS2_en_excel_v2_5731200.xlsx"), function(x) {
+    temp.dt.1 <- data.table(read_excel(paste0(country.data.path, x), skip = 2))
+    meta.data <- temp.dt.1[["Indicator Name"]][1]
+    temp.dt.1[, c("Indicator Name", "Indicator Code", "Country Name") := NULL, ]
+    temp.dt.2 <- melt(temp.dt.1, id.vars = "Country Code", variable.name = "raw.year", value.name = meta.data)
+    temp.dt.2[, raw.year := as.numeric(as.character(temp.dt.2$raw.year)), ]
+    ## Create a prober name, based on the tree letter code
+    temp.dt.2[, country := iso.3166$String[match(`Country Code`, iso.3166$String.code)], ]
+    ## Drop the three letter code.
+    temp.dt.2[, `Country Code` := NULL, ]
+    ## Drop cases that has missing data on the identifier variables.
+    temp.dt.3 <- temp.dt.2[is.na(country) == FALSE, ]
+    setkey(temp.dt.3, country, raw.year)
+    return(temp.dt.3)
+}, simplify = FALSE))
+## improve some var names
+bad.names <- c("GDP per capita (current US$)", "Exports of goods and services (% of GDP)", "Agriculture, forestry, and fishing, value added (% of GDP)", "Population ages 15-64, total")
+nice.names <- c("GDP", "percent.goods.and.services.percent.of.gdp", "agriculture.forestry.percent.of.gdp", "population.15.64")
+for(i in 1:length(bad.names)){
+    colnames(country.data) <- gsub(bad.names[i], nice.names[i], colnames(country.data), fixed = TRUE)
+}
 @
 
 To identify which grid cell(s) of deforestation data cover the gadm region, find the North West corner, that is, «max(latitude)« and «min(longitude)« of the bounding box, and that gives the first needed cell. Then extend to east and south if necessary. Assume no region covers more than four grid cells.
@@ -838,7 +837,7 @@ Angola (2015 + 2011 (MIS) 2006-7 (MIS), Madagascar (2021, 2008-2009, 2003-2004 (
 
 Merge the results.
 
-<<merge.results>>=
+<<merge.results, dependson = "continued.country">>=
 library(data.table)
 temporal.loss <- rbind(easy.ones, my.means)
 names(temporal.loss)[match("region", names(temporal.loss))] <- "superClusterID"
