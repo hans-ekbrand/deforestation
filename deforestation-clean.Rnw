@@ -958,7 +958,7 @@ Table \vref{tab:data} provides an excerpt from the data set that includes data o
 library(data.table)
 foo <- test.dt[, c("loss.at.year.of.interview", 
                    "GDP", "forest.class", "year", "superClusterID", "average.years.of.education.for.the.1956.1976.raw", "deprived", "not.deprived")]
-foo[, prop.deprived := length(which(deprived))/.N, ]
+foo[, prop.deprived := deprived/(deprived + not.deprived), ]
 setkey(foo, superClusterID, year)
 colnames(foo) <- c("DF", "GDP", "FC", "year", "area", "EduY", "D.", "Non D.", "p.D.")
 foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
