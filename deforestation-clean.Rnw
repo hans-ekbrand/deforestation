@@ -957,13 +957,13 @@ Table \vref{tab:data} provides an excerpt from the data set that includes data o
 <<continued.excerpt, echo = FALSE, results = "asis">>=
 library(data.table)
 foo <- test.dt[, c("loss.at.year.of.interview", 
-"GDP", "forest.class", "year", "superClusterID", "average.years.of.education.for.the.1956.1976.raw", "deprived", "not.deprived")]
-## setDT(foo)
+                   "GDP", "forest.class", "year", "superClusterID", "average.years.of.education.for.the.1956.1976.raw", "deprived", "not.deprived")]
+foo[, prop.deprived := length(which(deprived))/.N, ]
 setkey(foo, superClusterID, year)
-colnames(foo) <- c("DF", "GDP", "FC", "year", "area", "EduY", "D.", "Non D.")
+colnames(foo) <- c("DF", "GDP", "FC", "year", "area", "EduY", "D.", "Non D.", "p.D.")
 foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
 library(xtable)
-print(xtable(foo[1:10, ], digits = c(0, rep(2, 2), rep(0, 3), 2, rep(0, 2)), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana."), include.rownames = FALSE, booktabs = TRUE)
+print(xtable(foo[1:42, ], digits = c(0, 2, 0, rep(0, 3), 2, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana."), include.rownames = FALSE, booktabs = TRUE)
 @ 
 
 
