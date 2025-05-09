@@ -326,7 +326,7 @@ Since the data is of very high resolution, and the total area of the window is l
 
 To efficiently use these, the size of each area is computed, and all areas are classified by their size and each size-class is treated differently: the larger the areas in the size class, the more agressive parallelisation is applied (the largest areas are handled sequentially). In addition to this, parts of «average.coverage.over.time.directly.from.single.file()« is also parallelised in a way that takes the size of the partial area into account, but only on operating systems that support forking of processes, ie. Linux and MacOS.
 
-Calculating the loss of tree coverage over time requires use of both the coverage layer and the loss layer, since the loss data is a binary flagg per pixel, to quantify the loss we need to know the state of that pixel before the loss happened (and as a proxy we must use the state of that pixel in year 2000). Fortunately, only the cells where loss occured is needed, which generally is a very small portion of all cells in the loss layer.
+Calculating the loss of tree coverage over time requires use of both the coverage layer and the loss layer, since the loss data is a binary flag per pixel, to quantify the loss we need to know the state of that pixel before the loss happened (and as a proxy we must use the state of that pixel in year 2000). Fortunately, only the cells where loss occured is needed, which generally is a very small portion of all cells in the loss layer.
 
 
 % \section{A package for accessing the global forest watch database}
@@ -505,9 +505,29 @@ these.regions <- which(substring(names(dhs.grid), 1, 4) == substring(names(dhs.g
 this.country.code <- substring(names(dhs.grid)[1], 1, 3)
 this.country.name <- globallivingconditions::iso.3166$String[match(this.country.code, globallivingconditions::iso.3166$numeric)]
 my.f <- function(x, y) { raster::merge(x, y, tolerance = 1) }
+
+## Helper to tile extent into grid
+tile_extent_grid <- function(r, nx, ny) {
+  e <- raster::extent(r)
+  xbreaks <- seq(e@xmin, e@xmax, length.out = nx + 1)
+  ybreaks <- seq(e@ymin, e@ymax, length.out = ny + 1)
+  tiles <- list()
+  for (i in seq_len(nx)) {
+    for (j in seq_len(ny)) {
+      tile_ext <- raster::extent(xbreaks[i], xbreaks[i+1], ybreaks[j], ybreaks[j+1])
+      tiles[[length(tiles) + 1]] <- tile_ext
+    }
+  }
+  tiles
+}
+
+my.mosaic <- function(...){ raster::mosaic(..., fun = mean, tolerance = 1) }
+
 my.g <- function(i) {
     ## Create the large raster
+    globallivingconditions::my.log.f(paste0(Sys.time(), " Starting to aggregate polygon number ", i, "."))
     my.raster <- load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)
+    globallivingconditions::my.log.f(paste0(Sys.time(), " Raster loaded for polygon number ", i, "."))    
     ## Prepare removing the large files when they are used
     my.pid <- Sys.getpid()
     all.temp.files <- raster::showTmpFiles()
@@ -515,31 +535,68 @@ my.g <- function(i) {
     matches <- vapply(strsplit(all.temp.files, "_"), function(parts) {
         length(parts) >= 2 && parts[length(parts) - 1] == my.pid
     }, logical(1))
-    my.small <- raster::aggregate(my.raster, 75)
+
+    ## Inner Parallelisation START
+    ## Tile raster into approximately equal areas
+
+    ## TODO adjust number of tiles to size of the raster.
+    tiles_ext <- tile_extent_grid(my.raster, nx = floor(n.cores/2), ny = floor(n.cores/2))
+    ## On 8 cores this give 4x4 = 16 tiles, might be too many, but OTOH seems to require less RAM.
+    tiles.with.data <- sapply(tiles_ext, function(mask) { raster::crop(my.raster, mask) })
+
+    ## Apply terra::aggregate() in parallel
+    aggregated_tiles <- future.apply::future_lapply(tiles.with.data, function(tile) {
+        raster::aggregate(tile, 75)
+    }, future.seed=TRUE) ## 5 GB
+
+    ## Merge aggregated tiles back together
+    my.small <- do.call(my.mosaic, aggregated_tiles)
+    ## Inner Parallelisation STOP    
+
+    ## ## Old non-parallelised version
+    ## my.small <- raster::aggregate(my.raster, 75)
+    
     if(length(matches) > 0){
         ## delete the large file
         rm(my.raster)
         unlink(paste0(tempdir(), "/raster/", all.temp.files[matches]))
     }
+    globallivingconditions::my.log.f(paste0(Sys.time(), " Finished aggregating polygon number ", i, "."))
     return(my.small)
 }
-## parallelise if on unix
-if(.Platform$OS.type == "unix") {
-    ## leave at least 15.5 GB per region to aggregate
-    n.cores <- min(parallelly::availableCores(method = c("Slurm", "system"))-1,
-                   floor(as.vector(benchmarkme::get_ram() / 1E9) / 15.5))
-    globallivingconditions::my.log.f(paste(Sys.time(), "n.cores=", n.cores))
-    foo <- parallel::mclapply(these.regions, my.g, mc.cores = n.cores)
-    globallivingconditions::my.log.f(paste(Sys.time(), "Finished reading in rasters."))
-} else {
-    foo <- sapply(these.regions, my.g)
-}
-## Convert to terra SpatRasters, so that we can use mosaic() which is faster than merge()
-terra_list <- lapply(foo, terra::rast)
-globallivingconditions::my.log.f(paste(Sys.time(), "Finished converting rasters to terra."))
+## ## parallelise if on unix
+## if(.Platform$OS.type == "unix") {
+##     ## leave at least 25 GB per region to aggregate. Reduce this when working with smaller regions.
+##     n.cores <- min(parallelly::availableCores(method = c("Slurm", "system"))-1,
+##                    floor(as.vector(benchmarkme::get_ram() / 1E9) / 25))
+##     globallivingconditions::my.log.f(paste0(Sys.time(), " n.cores=", n.cores))
+##     foo <- parallel::mclapply(these.regions, my.g, mc.cores = n.cores)
+##     globallivingconditions::my.log.f(paste(Sys.time(), "Finished reading in rasters."))
+## } else {
+##     foo <- sapply(these.regions, my.g)
+## }
 
-## bar <- Reduce(my.f, foo)
-bar <- do.call(terra::mosaic, terra_list)
+n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
+globallivingconditions::my.log.f(paste0(Sys.time(), " n.cores=", n.cores))
+
+## Set up the future plan (adjust according to your system)
+library(future); library(future.apply)
+future::plan("multicore", workers = n.cores) ## Assume multicore support
+options(future.globals.maxSize = 5e9)
+
+## foo <- sapply(these.regions, my.g)
+foo <- parallel::mclapply(these.regions, my.g, mc.cores = ceiling(n.cores/2))
+
+globallivingconditions::my.log.f(paste(Sys.time(), "Finished aggregating rasters."))
+
+## ## Convert to terra SpatRasters, so that we can use mosaic() which is faster than merge()
+## terra_list <- lapply(foo, terra::rast)
+
+## ## bar <- Reduce(my.f, foo)
+## bar <- do.call(terra::mosaic, terra_list)
+
+bar <- do.call(my.mosaic, foo)
+
 globallivingconditions::my.log.f(paste(Sys.time(), "Finished with the mosaic."))
 
 plot(bar, col = rev(terrain.colors(101)), zlim = c(0, 100), main=this.country.name)
@@ -553,10 +610,14 @@ temp.f <- function(i) {
     mean(raster::values(load.raster.from.disk(dhs.grid[i], deforestation.path = deforestation.path)), na.rm=TRUE)
 }
 if(.Platform$OS.type == "unix") {
+    ## leave at least 30 GB per region to aggregate. Reduce this when working with smaller regions.
+    n.cores <- min(parallelly::availableCores(method = c("Slurm", "system"))-1,
+                   floor(as.vector(benchmarkme::get_ram() / 1E9) / 30))
     my.means <- unlist(parallel::mclapply(these.regions, temp.f, mc.cores = n.cores))
 } else {
     my.means <- sapply(these.regions, temp.f)
 }
+    
 this.country.code <- substring(names(dhs.grid)[1], 1, 3)
 this.country.name <- globallivingconditions::iso.3166$String[match(this.country.code, globallivingconditions::iso.3166$numeric)]
 my.spdf <- sp::SpatialPolygonsDataFrame(dhs.grid[these.regions], data = data.frame(mean.coverage.in.year.2000 = my.means), match.ID = FALSE)
