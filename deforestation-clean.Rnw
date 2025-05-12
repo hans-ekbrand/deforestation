@@ -1003,9 +1003,10 @@ dep.subset.f <- function(var.name){
     output.dt.2$superClusterID <- factor(output.dt.2$superClusterID)
 
     ## If some region where present in foo, but not in output.dt.2, explain why.
-    if(length(unique(foo$superClusterID)) > length(unique(output.dt.2$superClusterID))){
-        these <- which(is.na(match(unique(foo$superClusterID), unique(output.dt.2$superClusterID))))
-        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions lacked enough data: ", paste(unique(foo$superClusterID)[these], collapse = ", ")))
+    
+    if(length(output.dt.2[is.na(average.years.of.education.for.the.1956.1976.cohort) == FALSE, unique($superClusterID), ])) < length(unique(foo$superClusterID))){
+        these <- which(is.na(match(unique(foo$superClusterID), output.dt.2[is.na(average.years.of.education.for.the.1956.1976.cohort) == FALSE, unique($superClusterID), ])))
+        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions lacked enough data on education for the cohort: ", paste(unique(foo$superClusterID)[these], collapse = ", ")))
         save(foo, file = "foo.RData")
     }
 
