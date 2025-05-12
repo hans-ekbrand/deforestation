@@ -555,28 +555,31 @@ my.g <- function(i) {
     ## my.nx <- floor(min(my.size / 7500000, n.cores/2))
     ## perhaps no need for a lower bound?
     my.nx <- floor(my.size / 7500000)
-    globallivingconditions::my.log.f(paste(Sys.time(), "using", my.nx, "by", my.nx, "tiles for polygon number", i, "of size", my.size))
+    if(my.nx > 1){
+        globallivingconditions::my.log.f(paste(Sys.time(), "using", my.nx, "by", my.nx, "tiles for polygon number", i, "of size", my.size))
 
-    tiles_ext <- tile_extent_grid(my.raster, nx = my.nx, ny = my.nx)
-    ## On 8 cores this give 4x4 = 16 tiles, might be too many, but OTOH seems to require less RAM.
-    ## tiles.with.data <- sapply(tiles_ext, function(mask) { raster::crop(my.raster, mask) })
+        tiles_ext <- tile_extent_grid(my.raster, nx = my.nx, ny = my.nx)
+        ## On 8 cores this give 4x4 = 16 tiles, might be too many, but OTOH seems to require less RAM.
+        ## tiles.with.data <- sapply(tiles_ext, function(mask) { raster::crop(my.raster, mask) })
 
-    ## ## Apply terra::aggregate() in parallel
-    ## aggregated_tiles <- future.apply::future_lapply(tiles.with.data, function(tile) {
-    ##     raster::aggregate(tile, 75)
-    ## }, future.seed=TRUE) ## 5 GB
+        ## ## Apply terra::aggregate() in parallel
+        ## aggregated_tiles <- future.apply::future_lapply(tiles.with.data, function(tile) {
+        ##     raster::aggregate(tile, 75)
+        ## }, future.seed=TRUE) ## 5 GB
 
-    ## Apply crop and terra::aggregate() in parallel
-    aggregated_tiles <- future.apply::future_lapply(tiles_ext, function(mask) {
-        raster::aggregate(raster::crop(my.raster, mask), 75)
-    }, future.seed=TRUE)
+        ## Apply crop and terra::aggregate() in parallel
+        aggregated_tiles <- future.apply::future_lapply(tiles_ext, function(mask) {
+            raster::aggregate(raster::crop(my.raster, mask), 75)
+        }, future.seed=TRUE)
 
-    ## Merge aggregated tiles back together
-    my.small <- do.call(my.mosaic, aggregated_tiles)
-    ## Inner Parallelisation STOP    
+        ## Merge aggregated tiles back together
+        my.small <- do.call(my.mosaic, aggregated_tiles)
+        ## Inner Parallelisation STOP
 
-    ## ## Old non-parallelised version
-    ## my.small <- raster::aggregate(my.raster, 75)
+    } else {
+        globallivingconditions::my.log.f(paste(Sys.time(), "Not parallelising the small polygon number", i, "of size", my.size))
+        my.small <- raster::aggregate(my.raster, 75)
+    }
     
     if(length(matches) > 0){
         ## delete the large file
