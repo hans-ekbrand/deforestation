@@ -1050,7 +1050,7 @@ colnames(foo) <- c("DF", "GDP", "FC", "year", "area", "EduY", "D.", "Non D.", "p
 foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
 library(xtable)
 print(xtable(foo[1:42, ], digits = c(0, 2, 0, rep(0, 3), 2, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana.", align = c(rep("r", 5), "p{4cm}", rep("r", 4))), include.rownames = FALSE, booktabs = TRUE)
-v@ 
+@ 
 
 
 \end{document}
