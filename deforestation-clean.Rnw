@@ -1002,6 +1002,13 @@ dep.subset.f <- function(var.name){
 
     output.dt.2$superClusterID <- factor(output.dt.2$superClusterID)
 
+    ## If some region where present in foo, but not in output.dt.2, explain why.
+    if(length(unique(foo$superClusterID)) > length(unique(output.dt.2$superClusterID))){
+        these <- which(is.na(match(unique(foo$superClusterID), unique(output.dt.2$superClusterID))))
+        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions lacked enough data: ", paste(unique(foo$superClusterID)[these], collapse = ", ")))
+        save(foo, file = "foo.RData")
+    }
+
     return(output.dt.2)
 }
 my.deps <- c("severe.shelter.deprivation", "severe.water.deprivation", "severe.food.deprivation", "severe.sanitation.deprivation")
@@ -1049,7 +1056,7 @@ setkey(foo, superClusterID, year)
 colnames(foo) <- c("DF", "GDP", "FC", "year", "area", "EduY", "D.", "Non D.", "p.D.")
 foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
 library(xtable)
-print(xtable(foo[1:42, ], digits = c(0, 2, 0, rep(0, 3), 2, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana.", align = c(rep("r", 5), "p{4cm}", rep("r", 4))), include.rownames = FALSE, booktabs = TRUE)
+print(xtable(foo, digits = c(0, 2, 0, rep(0, 3), 2, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Deforestation ('DF'), Forest Class ('FC'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.') for an area in Ghana.", align = c(rep("r", 5), "p{4cm}", rep("r", 4))), include.rownames = FALSE, tabular.environment = "longtable", floating = FALSE)
 @ 
 
 
