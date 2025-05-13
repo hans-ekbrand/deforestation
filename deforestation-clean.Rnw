@@ -978,10 +978,9 @@ dep.subset.f <- function(var.name){
     ## if data collection happened over two different years, then there are two separate lines.
     ## merge these and take the mean year.
 
-
     output.dt <- my.dt.with.temporal.loss[these, list(
         deprived = sum(length(which(dep.var))),
-        raw.year = mean(year.of.interview),
+        raw.year = round(mean(year.of.interview)),
         loss.at.year.of.interview = mean(loss.at.year.of.interview),
         not.deprived = sum(.N) - sum(length(which(dep.var))),
         country = unique(globallivingconditions::iso.3166$String[match(country.code.ISO.3166.alpha.3, globallivingconditions::iso.3166$numeric)]),
@@ -1007,6 +1006,16 @@ dep.subset.f <- function(var.name){
     if(length(output.dt.2[is.na(average.years.of.education.for.the.1956.1976.cohort) == FALSE, unique(superClusterID), ]) < length(unique(foo$superClusterID))){
         these <- which(is.na(match(unique(foo$superClusterID), output.dt.2[is.na(average.years.of.education.for.the.1956.1976.cohort) == FALSE, unique(superClusterID), ])))
         globallivingconditions::my.log.f(paste(Sys.time(), "Some regions lacked enough data on education for the cohort: ", paste(unique(foo$superClusterID)[these], collapse = ", ")))
+        save(foo, file = "foo.RData")
+    }
+    if(length(my.dt.with.temporal.loss[is.na(dep.var) == FALSE, unique(superClusterID), ]) < length(unique(my.dt.with.temporal.loss$superClusterID))){
+        these <- which(is.na(match(unique(my.dt.with.temporal.loss$superClusterID), output.dt.2[is.na(dep.var) == FALSE, unique(superClusterID), ])))
+        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions lacked enough data on deprivation: ", paste(unique(unique(my.dt.with.temporal.loss$superClusterID)[these], collapse = ", "))))
+        save(foo, file = "foo.RData")
+    }
+    if(length(my.dt.with.temporal.loss[is.na(loss.at.year.of.interview) == FALSE, unique(superClusterID), ]) < length(unique(my.dt.with.temporal.loss$superClusterID))){
+        these <- which(is.na(match(unique(my.dt.with.temporal.loss$superClusterID), output.dt.2[is.na(loss.at.year.of.interview) == FALSE, unique(superClusterID), ])))
+        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions lacked enough data on loss.at.year.of.interview: ", paste(unique(unique(my.dt.with.temporal.loss$superClusterID)[these], collapse = ", "))))
         save(foo, file = "foo.RData")
     }
 
