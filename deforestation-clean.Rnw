@@ -29,10 +29,10 @@ options(scipen=999) ## Avoid scientific formating of large numbers.
 The program downloads almost all of the necessary data from the internet, but data from the World Bank is currently read from local files, so the path to these needs to be set in the variable \texttt{country.data.path} which should be a path to the \emph{directory} where the following files reside:
 
 \begin{itemize}
-\item "API_NY.GDP.PCAP.CD_DS2_en_excel_v2_5795829.xlsx"
-\item "API_NE.EXP.GNFS.ZS_DS2_en_excel_v2_5728793.xlsx"
-\item "API_NV.AGR.TOTL.ZS_DS2_en_excel_v2_5728821.xlsx"
-\item "API_SP.POP.1564.TO_DS2_en_excel_v2_5731200.xlsx"
+\item "API\_NY.GDP.PCAP.CD\_DS2\_en\_excel\_v2\_5795829.xlsx"
+\item "API\_NE.EXP.GNFS.ZS\_DS2\_en\_excel\_v2\_5728793.xlsx"
+\item "API\_NV.AGR.TOTL.ZS\_DS2\_en\_excel\_v2\_5728821.xlsx"
+\item "API\_SP.POP.1564.TO\_DS2\_en\_excel\_v2\_5731200.xlsx"
 \end{itemize}
 
 The program also assumes the existence of a map of africa as a «SpatialPolygons« object named ``africa-lowres.RData'' in the directory given by \texttt{africa.map.path}.
