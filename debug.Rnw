@@ -1,0 +1,156 @@
+\documentclass[10pt,english]{article}
+\usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry} % 16:9 three pages in a row
+\usepackage[english]{babel}
+\usepackage{longtable}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{varioref} %% vref
+\usepackage{paralist} %% compactenum
+\usepackage{siunitx} %% \num
+\usepackage{IEEEtrantools} % proper indentation for multi-line equations
+\usepackage{amsmath} %% \pmatrix
+\usepackage{subfig}
+
+%% make a single « start and end a chunk of \texttt{}, and two «« to represent the literal «.
+\catcode`«=\active
+\def«#1«{\texttt{#1}}
+
+% This chunk is needed to make sure evaluation is taking place in the current directory.
+<<setup.outer, echo=FALSE, tidy=FALSE, message=FALSE>>=
+knitr::opts_chunk$set(results='hide', cache=TRUE, echo=TRUE, warning=TRUE, fig.pos = 'htb', tidy.opts=list(blank=FALSE, width.cutoff=50), background='white', tidy=FALSE, error=TRUE, message=FALSE, dev="pdf", autodep = TRUE)
+knitr::opts_knit$set(root.dir = ".")
+knitr::knit_hooks$set(crop = knitr::hook_pdfcrop)
+options(scipen=999) ## Avoid scientific formating of large numbers.
+@
+
+\begin{document}
+\section{Requirements}
+The program downloads almost all of the necessary data from the internet, but data from the World Bank is currently read from local files, so the path to these needs to be set in the variable \texttt{country.data.path} which should be a path to the \emph{directory} where the following files reside:
+
+\begin{itemize}
+\item "API\_NY.GDP.PCAP.CD\_DS2\_en\_excel\_v2\_5795829.xlsx"
+\item "API\_NE.EXP.GNFS.ZS\_DS2\_en\_excel\_v2\_5728793.xlsx"
+\item "API\_NV.AGR.TOTL.ZS\_DS2\_en\_excel\_v2\_5728821.xlsx"
+\item "API\_SP.POP.1564.TO\_DS2\_en\_excel\_v2\_5731200.xlsx"
+\end{itemize}
+
+The program also assumes the existence of a map of africa as a «SpatialPolygons« object named ``africa-lowres.RData'' in the directory given by \texttt{africa.map.path}.
+
+\texttt{deforestation.path} is where the forest coverage files will be stored after download.
+
+Finally, \texttt{my.dir} is the path to the local storage of DHS-files, so that files from the DHS can be used in multiple analyses and only need to be downloaded once.
+
+
+<<setup.more, echo = FALSE>>=
+my.dir <- "global-living-conditions"
+
+## If you have a local cache of files downloaded from the DHS website
+## then change my.dir to point to that folder
+
+if(Sys.info()["sysname"] == "Windows"){
+  ## figure out which computer we are in. TODO consider make all paths relative to the working directory.
+  if(file.exists("D:/Hans/DHS/global-living-conditions")){
+      my.dir <- "D:/Hans/DHS/global-living-conditions"    
+  } else {
+      if(file.exists("F:/Hans/global-living-conditions")){
+          my.dir <- "F:/Hans/global-living-conditions"
+    } else {
+      stop("no data directory found in two spots for Windows.")
+    }
+  }
+} else {
+    ## 245
+    if(file.exists("/media/sf_Our_data/Data/DHS")){
+        my.dir <- "/media/sf_Our_data/Data/DHS"
+        country.data.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/deforestation/Country data/"
+        deforestation.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
+        africa.map.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/"
+    }
+    ## SNIC
+    if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
+        my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"
+        country.data.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/Country data/"
+        deforestation.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/"
+        africa.map.path <- "~/maps/"
+    }
+    ## nomad, only do this for a small set
+    if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
+        my.dir <- "~/mnt/poverty/media/sf_Our_data/Data/DHS"
+        country.data.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/deforestation/Country data/"
+        deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
+        africa.map.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/"
+    }
+}
+@
+
+<<config>>=
+my.countries <- c("Senegal", "Gambia", "Guinea", "Sierra Leone", "Liberia", "Mali", "Cote d'Ivoire", "Burkina Faso", "Ghana", "Benin", "Togo", "Nigeria", "Chad", "Cameroon", "Sudan", "Ethiopia", "Sudan", "Gabon", "Congo", "Congo Democratic Republic", "Uganda", "Rwanda", "Kenya", "Tanzania", "Angola", "Malawi", "Mozambique", "Zambia", "Zimbabwe", "Namibia", "Lesotho", "South Africa", "Eswatini", "Madagascar", "Egypt", "Tunisia", "Morocco", "Burundi")
+
+my.countries <- c("Angola", "Tanzania", "Morocco", "Egypt", "Tunisia", "Mauretania")
+
+if(!exists("my.countries")){
+    my.countries = NULL
+}
+
+if(!exists("my.waves")){
+    my.waves = NULL
+}
+
+@
+
+<<install.packages, cache = FALSE>>=
+required.packages <- c("httr", "data.table", "car", "sp", "raster", "devtools", "purrr", "doParallel", "snow", "viridisLite", "geosphere", "parallel", "foreach", "tmap", "terra", "sf", "lme4", "parallelly", "readxl")
+for(package in required.packages){
+    if(!require(package, character.only=TRUE)){
+        install.packages(package, character.only=TRUE)
+    }
+}
+library(devtools)
+devtools::install_github("matthewkling/colors3d")
+@
+
+Each subset includes the average education in years for the adults aged 24-44 in year 2000 and aged 45-65 in year 2021, in order for us to be able to estimate how different the group surveyed in one year is from the group surveyed another year (in the same area), even if the educational level is increasing during the study period. By focussing on the persons who have already aquired their education when the study starts, we make use of the invariant feature of education, it is never lost.
+
+
+<<load.data>>=
+library(devtools)
+install_bitbucket(repo = "hansekbrand/iwi") ## install iwi first, since DHSharmonisation depends on it.
+install_bitbucket(repo = "hansekbrand/DHSharmonisation", ref="debug")
+library(globallivingconditions)
+load("~/user_credentials_dhs.RData") # a list with two named elements:
+                                   # "dhs.user" and "dhs.password" 
+my.dt <- download.and.harmonise(
+    dhs.user=credentials$dhs.user,
+    dhs.password=credentials$dhs.password,
+    countries = my.countries,
+    waves = my.waves,
+    vars.to.keep=c("source", "version", "year.of.interview", "country.code.ISO.3166.alpha.3", 
+"m49.region", "RegionID", "district", "ClusterID", "ClusterID.clean", 
+"PersonID.unique", "severe.food.deprivation", "severe.water.deprivation", 
+"severe.sanitation.deprivation", "severe.shelter.deprivation", "has.electricity",
+"HouseholdID", "month.of.interview", "sample.weight", "water", "time.to.water", "iwi",
+"rural", "lon", "lat", "phone", "owns.tv", "owns.land", "refridgerator", "owns.livestock",
+"gadm.areaname.3", "gadm.areaname.2", "gadm.areaname.1",
+"relation.to.hh", "age", "education.in.years", "education", "superClusterID"),
+    check.dhs.for.more.data = TRUE,
+    variable.packages = c("wealth", "india", "empowerment"),
+    required.number.of.waves = 2,
+    file.types.to.download = c("PR", "GE", "IR", "MR", "KR"),
+    directory = my.dir,
+    make.pdf = TRUE
+)
+save(my.dt, file = "living-conditions.RData")
+
+## Create the set of numeric codes of the countries in the sample.
+country.codes <- my.dt[, unique(country.code.ISO.3166.alpha.3), ]
+n.measurement.locations <- nrow(unique(my.dt[, list(lon, lat), ]))
+n.persons <- nrow(my.dt)
+
+rm(my.dt)
+gc(verbose=FALSE)
+
+@
+
+\end{document}
+
