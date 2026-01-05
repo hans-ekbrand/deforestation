@@ -16,15 +16,28 @@
 \catcode`«=\active
 \def«#1«{\texttt{#1}}
 
-% This chunk is needed to make sure evaluation is taking place in the current directory.
-<<setup.outer, echo=FALSE, tidy=FALSE, message=FALSE>>=
-knitr::opts_chunk$set(results='hide', cache=TRUE, echo=TRUE, warning=TRUE, fig.pos = 'htb', tidy.opts=list(blank=FALSE, width.cutoff=50), background='white', tidy=FALSE, error=TRUE, message=FALSE, dev="pdf", autodep = TRUE)
-knitr::opts_knit$set(root.dir = ".")
-knitr::knit_hooks$set(crop = knitr::hook_pdfcrop)
-options(scipen=999) ## Avoid scientific formating of large numbers.
-@
-
 \begin{document}
+
+%% make sure the child document exists before calling it.
+
+<<opts.chunk.parent, echo = FALSE>>=
+opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE,
+fig.width=4, fig.height=4, fig.pos = 'htb', tidy.opts=list(blank=FALSE,
+width.cutoff=50), background='white', tidy=TRUE, error=TRUE, message=FALSE,
+dev="png", dpi = 200, autodep = TRUE)
+opts_knit$set(root.dir = ".")
+options(scipen=999) ## Avoid scientific formating of large numbers.
+@ 
+
+<<install.globallivingconditions>>=
+library(devtools)
+install_bitbucket(repo = "hansekbrand/iwi")
+install_bitbucket(repo = "hansekbrand/DHSharmonisation", upgrade = "never", ref = "debug")
+@ 
+
+<<load.data.using.child.document, child=system.file("dhs-debug-child.Rnw", package="globallivingconditions")>>=
+@ 
+
 \section{Requirements}
 The program downloads almost all of the necessary data from the internet, but data from the World Bank is currently read from local files, so the path to these needs to be set in the variable \texttt{country.data.path} which should be a path to the \emph{directory} where the following files reside:
 
@@ -35,68 +48,13 @@ The program downloads almost all of the necessary data from the internet, but da
 \item "API\_SP.POP.1564.TO\_DS2\_en\_excel\_v2\_5731200.xlsx"
 \end{itemize}
 
-The program also assumes the existence of a map of africa as a «SpatialPolygons« object named ``africa-lowres.RData'' in the directory given by \texttt{africa.map.path}.
-
-\texttt{deforestation.path} is where the forest coverage files will be stored after download.
-
-Finally, \texttt{my.dir} is the path to the local storage of DHS-files, so that files from the DHS can be used in multiple analyses and only need to be downloaded once.
-
-
-<<setup.more, echo = FALSE>>=
-my.dir <- "global-living-conditions"
-
-## If you have a local cache of files downloaded from the DHS website
-## then change my.dir to point to that folder
-
-if(Sys.info()["sysname"] == "Windows"){
-  ## figure out which computer we are in. TODO consider make all paths relative to the working directory.
-  if(file.exists("D:/Hans/DHS/global-living-conditions")){
-      my.dir <- "D:/Hans/DHS/global-living-conditions"    
-  } else {
-      if(file.exists("F:/Hans/global-living-conditions")){
-          my.dir <- "F:/Hans/global-living-conditions"
-    } else {
-      stop("no data directory found in two spots for Windows.")
-    }
-  }
-} else {
-    ## 245
-    if(file.exists("/media/sf_Our_data/Data/DHS")){
-        my.dir <- "/media/sf_Our_data/Data/DHS"
-        country.data.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/deforestation/Country data/"
-        deforestation.path <- "/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
-        africa.map.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/"
-    }
-    ## SNIC
-    if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")){
-        my.dir <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/global-living-conditions"
-        country.data.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/Country data/"
-        deforestation.path <- "/mimer/NOBACKUP/groups/globalpoverty1/hans/Deforestation/"
-        africa.map.path <- "~/maps/"
-    }
-    ## nomad, only do this for a small set
-    if(file.exists("~/mnt/poverty/media/sf_Our_data/Data/DHS")){
-        my.dir <- "~/mnt/poverty/media/sf_Our_data/Data/DHS"
-        country.data.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/deforestation/Country data/"
-        deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/OneDrive - University of Gothenburg/Data/Global_forest_coverage/"
-        africa.map.path <- "~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/"
-    }
-}
-@
-
-<<config>>=
-my.countries <- c("Senegal", "Gambia", "Guinea", "Sierra Leone", "Liberia", "Mali", "Cote d'Ivoire", "Burkina Faso", "Ghana", "Benin", "Togo", "Nigeria", "Chad", "Cameroon", "Sudan", "Ethiopia", "Sudan", "Gabon", "Congo", "Congo Democratic Republic", "Uganda", "Rwanda", "Kenya", "Tanzania", "Angola", "Malawi", "Mozambique", "Zambia", "Zimbabwe", "Namibia", "Lesotho", "South Africa", "Eswatini", "Madagascar", "Egypt", "Tunisia", "Morocco", "Burundi", "Mauritania")
-
-# my.countries <- c("Angola", "Tanzania", "Morocco", "Egypt", "Mauritania", "South Africa", "Nigeria", "Congo Democratic Republic")
-
-if(!exists("my.countries")){
-    my.countries = NULL
-}
-
-if(!exists("my.waves")){
-    my.waves = NULL
-}
-
+<<setup.more>>=
+country.data.path <- paste0("~/annex/projekt/",
+      "global-living-conditions/stora-eller-statiska-filer/",
+      "deforestation/Country data/")
+deforestation.path <- paste0("/mnt/c/Users/xekbha/",
+      "University of Gothenburg/Deforestation and",
+      " poverty - Forest coverage/")
 @
 
 <<install.packages, cache = TRUE>>=
@@ -115,37 +73,24 @@ devtools::install_github("matthewkling/colors3d")
 
 Each subset includes the average education in years for the adults aged 24-44 in year 2000 and aged 45-65 in year 2021, in order for us to be able to estimate how different the group surveyed in one year is from the group surveyed another year (in the same area), even if the educational level is increasing during the study period. By focussing on the persons who have already aquired their education when the study starts, we make use of the invariant feature of education, it is never lost.
 
-
-<<load.data>>=
-library(devtools)
-install_bitbucket(repo = "hansekbrand/iwi")
-install_bitbucket(repo = "hansekbrand/DHSharmonisation", ref="debug")
+<<choose.vars>>=
 library(globallivingconditions)
-load("~/user_credentials_dhs.RData") # a list with two named elements:
-                                   # "dhs.user" and "dhs.password" 
-my.dt <- download.and.harmonise(
-    dhs.user=credentials$dhs.user,
-    dhs.password=credentials$dhs.password,
-    countries = my.countries,
-    waves = my.waves,
-    vars.to.keep=c("source", "version", "year.of.interview",
-                   "country.code.ISO.3166.alpha.3", 
+my.log.f(paste(Sys.time(), "reading data from disk START"), "deforestation.log")
+my.dt <- readRDS("final.RDS")
+my.log.f(paste(Sys.time(), "reading data from disk FINISH"), "deforestation.log")
+
+vars.to.keep=c("source", "version", "year.of.interview",
+               "country.code.ISO.3166.alpha.3", 
 "m49.region", "RegionID", "district", "ClusterID", "ClusterID.clean", 
 "PersonID.unique", "severe.food.deprivation", "severe.water.deprivation", 
 "severe.sanitation.deprivation", "severe.shelter.deprivation", "has.electricity",
 "HouseholdID", "month.of.interview", "sample.weight", "water", "time.to.water",
 "iwi", "rural", "lon", "lat", "phone", "owns.tv", "owns.land", "refridgerator",
-"owns.livestock", "gadm.areaname.3", "gadm.areaname.2", "gadm.areaname.1",
-"relation.to.hh", "age", "education.in.years", "education", "superClusterID"),
-    check.dhs.for.more.data = TRUE,
-    variable.packages = c("wealth", "india", "empowerment"),
-    required.number.of.waves = 2,
-    file.types.to.download = c("PR", "GE", "IR", "MR", "KR"),
-    directory = my.dir,
-    make.pdf = TRUE,
-    model.deprivation.trends = FALSE
-)
-save(my.dt, file = "living-conditions.RData")
+"owns.livestock",
+"relation.to.hh", "age", "education.in.years", "education", "superClusterID")
+
+drop.these <- colnames(my.dt)[! colnames(my.dt) %in% vars.to.keep]
+my.dt[, (drop.these) := NULL, ]
 
 ## Create the set of numeric codes of the countries in the sample.
 country.codes <- my.dt[, unique(country.code.ISO.3166.alpha.3), ]
@@ -156,8 +101,10 @@ n.measurement.locations <- nrow(unique(my.dt[, list(lon, lat), ]))
 ## And the number of persons
 n.persons <- nrow(my.dt)
 
-## This data set is too large to be cached; delete now,
+## This data set is too large to be cached; save, delete now,
 ## and reload later.
+saveRDS(my.dt, file = "reduced.RDS")
+
 rm(my.dt)
 gc(verbose=FALSE)
 
@@ -206,7 +153,7 @@ for(i in 1:length(bad.names)){
 
 To identify which grid cell(s) of deforestation data cover the gadm region, find the North West corner, that is, «max(latitude)« and «min(longitude)« of the bounding box, and that gives the first needed cell. Then extend to east and south if necessary. Assume no region covers more than four grid cells.
 
-<<find.the.grid.cell, dependson = "load.data">>=
+<<find.the.grid.cell, dependson = "load.data.using.child.document">>=
 library(httr)
 ## version <- "2021-v1.9"
 version <- "2023-v1.11"
@@ -268,7 +215,7 @@ file.name.from.bbox.f <- function(bbox, layer){
 
 url.from.file.f <- function(file.name) { paste0(base.url, file.name) }
 
-dhs.grid <- get(load("dhs.grid.RData"))
+dhs.grid <- readRDS("dhs.grid.RDS")
 
 for(i in 1:length(dhs.grid)){
     my.bbox <- dhs.grid[i]@bbox
@@ -321,63 +268,6 @@ A polygon that covers the whole continent of interest, including countries on th
 
 % «SpatialPolygons« object. Use «raster::union()« to merge polygons to a single border.
 
-<<the-whole-continent>>=
-africa <- get(load(paste0(africa.map.path, "africa-lowres.RData")))
-@ 
-
-Create the surface covered by all countries in the sample, here called «my.window«.
-
-<<create.the.window>>=
-my.window <- country.codes |>
-  lapply(get.border) |>
-  (\(x) Filter(Negate(is.null), x))() |>
-  (\(x) do.call(rbind, x))() |>
-  sf::st_union() |>
-  sf::as_Spatial()
-
-@
-
-<<plot-the-grid, fig.cap = paste0("The administrative areas at which we calculate the level of forestation and the level of deforestation. There are ", length(dhs.grid), " administrative areas. The red line encloses the area under study, ie. white areas without black lines in them are excluded. In total the data on living conditions consists of measurements from ", n.measurement.locations, " locations . Total number of surveyed persons: ", n.persons, "."), fig.width=6.45, fig.height=6.45>>=
-plot(africa)
-plot(dhs.grid, add = TRUE, lwd = 0.05)
-plot(my.window, add = TRUE, border = "red", lwd = 0.5)
-@ 
-
-To be able to plot the whole continent, create a downsampled dataset. Downsample with «aggregate()« which by default takes the mean. A factor of 100 in each dimension gives a reduction of data by 10.000/1 in two dimensions.
-
-<<downsampling>>=
-cl <- snow::makeCluster(parallelly::availableCores(
-                          method = c("Slurm", "system"))-1, type = "SOCK")
-doParallel::registerDoParallel(cl)
-snow::clusterExport(cl, c("deforestation.path"))
-
-foreach::foreach(file = list.files(path=deforestation.path,
-          pattern = ".*treecover.*[W|E].tif", full.names=TRUE)) %dopar% {
-    new.filename <- gsub(".tif", "_small.tif", file, fixed=TRUE)
-    if(! file.exists(new.filename)){
-        temp.raster <- raster::aggregate(raster::raster(file), 100)
-        raster::writeRaster(temp.raster, filename = new.filename,
-                    datatype='INT1U')
-    }
-}
-stopCluster(cl)
-
-@ 
-
-<<plot-the-coverage, fig.cap = "The tree coverage in the sampled area year 2000 per pixel. The raw data was downsampled 10.000 times before producing this plot.", fig.width=6.45, fig.height=6.45, dpi=300>>=
-## terra requires my.window to be a spatvector, but that is inconvenient
-## since is to not cacheable by knitr.
-## So, make my.window a SpatialPolygons, and use raster:: instead of
-## terra::
-## plot(terra::mask(Reduce(terra::merge, sapply(list.files(
-## path=deforestation.path, pattern = ".*treecover.*small.tif",
-## full.names=TRUE), terra::rast)), my.window))
-plot(raster::mask(Reduce(raster::merge, sapply(list.files(
-  path=deforestation.path, pattern = ".*treecover.*small.tif",
-  full.names=TRUE), raster::raster)), my.window))
-lines(africa)
-lines(my.window, col = "red", lwd = 0.5)
-@ 
 
 For verifying that the program is correct, the possibility to compare the pixel based version with the region based version of the same country is vital. Here is how to plot the pixel based version of a single country.
 
@@ -580,220 +470,6 @@ temporal.loss.directly.from.possible.multiple.files <- function(index,
 }
 @ 
 
-Try it out by plotting the first region in the grid, see figure \vref{fig:test-get-raster}.
-
-<<test-get-raster, fig.cap = "Testing the functionality to get a raster given a polygon.", fig.width = 6, fig.height = 4>>=
-library(raster)
-plot(load.raster.from.disk(dhs.grid[1],
-   deforestation.path = deforestation.path), zlim = c(0, 100))
-plot(dhs.grid[1], add = TRUE)
-@ 
-
-Taking the mean value is easy enough. To see that the mean carries some signal, plot the mean values of all regions in the first country in the grid, and compare that with the raw version. First plot the raw data, see figure \vref{fig:raw-data-first-country}.
-
-<<raw-data-first-country, fig.cap = "Raw data downsampled by factor 100.", fig.width = 7, fig.height = 5.5>>=
-this.country.code <- strsplit(names(dhs.grid[1]), ".", fixed = TRUE)[[1]][1]
-these.regions <- which(substring(names(dhs.grid), 1, nchar(
-                                   this.country.code)) == this.country.code)
-this.country.name <- globallivingconditions::iso.3166$String[match(
-        this.country.code, globallivingconditions::iso.3166$numeric)]
-my.f <- function(x, y) { raster::merge(x, y, tolerance = 1) }
-
-## Helper to tile extent into grid
-tile_extent_grid <- function(r, nx, ny) {
-  e <- raster::extent(r)
-  xbreaks <- seq(e@xmin, e@xmax, length.out = nx + 1)
-  ybreaks <- seq(e@ymin, e@ymax, length.out = ny + 1)
-  tiles <- list()
-  for (i in seq_len(nx)) {
-    for (j in seq_len(ny)) {
-        tile_ext <- raster::extent(xbreaks[i], xbreaks[i+1],
-                                   ybreaks[j], ybreaks[j+1])
-      tiles[[length(tiles) + 1]] <- tile_ext
-    }
-  }
-  tiles
-}
-
-my.mosaic <- function(...){ raster::mosaic(..., fun = mean,
-                                          tolerance = 1, na.rm = TRUE) }
-
-my.g <- function(i, n.cores.for.this.instance) {
-    ## Create the large raster
-    globallivingconditions::my.log.f(paste0(Sys.time(),
-       " my.g(): Starting to aggregate polygon number ", i,
-       ", forking at most ", n.cores.for.this.instance,
-       " instances."), "deforestation.log")
-    my.raster <- load.raster.from.disk(dhs.grid[i],
-                           deforestation.path = deforestation.path)
-    globallivingconditions::my.log.f(paste0(Sys.time(),
-" my.g(): Raster loaded for polygon number ", i, "."), "deforestation.log")
-    ## Prepare removing the large files when they are used
-    my.pid <- Sys.getpid()
-    all.temp.files <- raster::showTmpFiles()
-
-    ## Inner Parallelisation START
-    ## Tile raster into approximately equal areas (note that some areas
-    ## can be empty).
-
-    my.size <- dim(my.raster)[1] * dim(my.raster)[2]
-    ## what is the reasonable lower bound here, really?
-    ## my.nx <- floor(min(my.size / 7500000, n.cores/2))
-    ## perhaps no need for a lower bound?
-    my.nx <- floor(my.size / 7500000)
-    if(my.nx > 1){
-        globallivingconditions::my.log.f(paste(Sys.time(), "using",
-         my.nx, "by", my.nx, "tiles for polygon number", i, "of size", my.size),
-         "deforestation.log")
-        tiles_ext <- tile_extent_grid(my.raster, nx = my.nx, ny = my.nx)
-        aggregated_tiles <- future.apply::future_lapply(tiles_ext,
-           function(mask) {
-               raster::aggregate(raster::crop(my.raster, mask), 75)
-           }, future.seed=TRUE)
-
-        ## Merge aggregated tiles back together
-        my.small <- do.call(my.mosaic, aggregated_tiles)
-        ## Inner Parallelisation STOP
-
-    } else {
-        globallivingconditions::my.log.f(paste(Sys.time(),
-  "Not parallelising the small polygon number", i, "of size", my.size),
-  "deforestation.log")
-        my.small <- raster::aggregate(my.raster, 75)
-    }
-    
-    if(length(all.temp.files) > 0 &
-       class(all.temp.files[1]) == "character") {
-        ## Identify elements where the second-last field matches PID
-        matches <- vapply(strsplit(all.temp.files, "_"), function(parts) {
-            length(parts) >= 2 && parts[length(parts) - 1] == my.pid
-        }, logical(1))
-        ## delete the large file
-        rm(my.raster)
-        unlink(paste0(tempdir(), "/raster/", all.temp.files[matches]))
-    }
-    globallivingconditions::my.log.f(paste0(Sys.time(),
-                     " Finished aggregating polygon number ", i, "."),
-                     "deforestation.log")
-    return(my.small)
-}
-
-## The largest regions can demand 25 GB to aggregate.
-## Note that lower level parallelisation must not multiplicate the RAM
-## used by the parent thread. Using multisession might work though, since
-## that implies starting from scratch, right?
-
-actual.cores <- parallelly::availableCores(method=c("Slurm", "system"))
-n.cores <- min(actual.cores,
-               floor(as.vector(benchmarkme::get_ram() / 1E9) / 25))
-globallivingconditions::my.log.f(paste0(Sys.time(), " actual cores=",
-            actual.cores, ", spawning this many instances=", n.cores),
-            "deforestation.log")
-## Set up the future plan (adjust according to your system)
-library(future); library(future.apply)
-future::plan(list(
-          tweak(multisession, workers = n.cores),
-          tweak(multicore, workers = ceiling(actual.cores / n.cores))))
-options(future.globals.maxSize = 5e9)
-foo <- future.apply::future_sapply(these.regions, my.g,
-          n.cores.for.this.instance = ceiling(actual.cores / n.cores),
-          future.seed=TRUE)
-globallivingconditions::my.log.f(paste(Sys.time(),
-                                       "Finished aggregating rasters."),
-                                 "deforestation.log")
-## my.mosaic() is just a wrapper that sets a higher default tolerance,
-## for mis-aligned grids.
-bar <- do.call(my.mosaic, foo)
-
-globallivingconditions::my.log.f(paste(Sys.time(),
-                                       "Finished with the mosaic."),
-                                 "deforestation.log")
-plot(bar, col = rev(terrain.colors(101)), zlim = c(0, 100),
-     main=this.country.name)
-lines(sf::as_Spatial(get.border(this.country.code)))
-@ 
-
-Now compare with a graph where the mean values are plotted for each region in the country, see figure \vref{fig:testing-means}. This figure is constructed with «spplot()« which is useful plotting monochrome regions, in contrast to the raw data which was a «raster« object.
-
-%% testing mean is computationally expensive, perhaps make this a static plot?
-
-<<testing-means, fig.cap = "Plotting the mean values of regions instead of mean values of pixels.">>=
-temp.f <- function(i) {
-    globallivingconditions::my.log.f(paste0(Sys.time(),
-     " taking the mean of area with index ", i), "deforestation.log")
-    my.values <- try(raster::values(load.raster.from.disk(
-     dhs.grid[i], deforestation.path = deforestation.path)),
-     silent = TRUE)
-    if(length(attr(my.values, which = "condition")) > 0){
-        globallivingconditions::my.log.f(paste0(Sys.time(),
-    " temp.f() failed to read area with index ", i), "deforestation.log")
-        return(NA)
-    }
-    ## Find temporary disk files
-    my.pid <- Sys.getpid()
-    all.temp.files <- raster::showTmpFiles()
-
-    ## Single value for the local area
-    my.mean <- mean(my.values, na.rm=TRUE)
-    ## Clean up, preparing to remove temporary disk files
-    rm(my.values); gc(verbose = FALSE)
-
-    ## Identify elements where the second-last field matches PID
-    if(length(all.temp.files) > 0 &
-       class(all.temp.files[1]) == "character") {
-        matches <- vapply(strsplit(all.temp.files, "_"), function(parts) {
-            length(parts) >= 2 && parts[length(parts) - 1] == my.pid
-        }, logical(1))
-        if(length(matches) > 0){
-            ## delete files
-            files.to.delete <- paste0(tempdir(), "/raster/",
-                                  all.temp.files[matches])
-            globallivingconditions::my.log.f(paste0(Sys.time(),
-              " temp.f() cleaning up by deleting files",
-              paste(files.to.delete, collapse = ", ")),
-              "deforestation.log")
-              unlink(files.to.delete)
-        }
-    }
-    ## Cleaning up finished
-    
-    return(my.mean)
-}
-
-## ## leave at least 30 GB per region to aggregate. Reduce this when
-## ## working with smaller regions.
-##     n.cores <- min(parallelly::availableCores(
-##                                    method = c("Slurm", "system")) - 1,
-##                    floor(as.vector(benchmarkme::get_ram() / 1E9) / 30))
-
-globallivingconditions::my.log.f(paste0(Sys.time(),
-         " testing-means started."), "deforestation.log")
-
-## Only outer parallelization this time.
-## for now, relax and use more cores
-
-future::plan(multisession, workers = actual.cores - 1)
-my.means <- future.apply::future_sapply(these.regions,
-                                   temp.f, future.seed=TRUE)
-
-globallivingconditions::my.log.f(paste0(Sys.time(),
-           " testing-means finished."), "deforestation.log")
-
-this.country.code <- strsplit(names(dhs.grid[1]), ".", fixed = TRUE)[[1]][1]
-this.country.name <- globallivingconditions::iso.3166$String[
-  match(this.country.code, globallivingconditions::iso.3166$numeric)]
-my.spdf <- sp::SpatialPolygonsDataFrame(dhs.grid[these.regions],
-       data = data.frame(mean.coverage.in.year.2000 = my.means),
-       match.ID = FALSE)
-sp::spplot(my.spdf, col=NA, col.regions=rev(terrain.colors(101)),
-           at = seq(0, 100, 1), scales = list(draw = TRUE),
-           main = this.country.name,
-           sp.layout = list(sf::as_Spatial(get.border(this.country.code)),
-                            col = "black"))
-
-@
-
-
 <<easy.ones>>=
 temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index,
                                                 deforestation.path, ...) {
@@ -937,7 +613,9 @@ remaining.ones <- (1:length(dhs.grid))[-unlist(multiple.areas.one.tiff)]
 ## Split tasks by RAM requirements
 area.sizes <- geosphere::areaPolygon(dhs.grid[remaining.ones])
 
-n.cores <- parallelly::availableCores(method = c("Slurm", "system"))
+## This number gets a bit too high on my laptop (32 GB RAM, 22 cores)
+## So scale by 0.75
+n.cores <- floor(parallelly::availableCores(method = c("Slurm", "system")) * 0.75)
 
 ## If RAM is plenty, then divide differently
 ## This is for a RAM restricted system
