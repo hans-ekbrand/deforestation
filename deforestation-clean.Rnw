@@ -709,7 +709,7 @@ temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index,
         temporal.loss <- cbind(data.table::data.table(
                                                region = names(
                                                    dhs.grid)[i],
-                                               size,
+                                               my.raster.stats$size,
                          coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
                                t(data.frame(absolute.loss.per.year)))
     }
@@ -1010,29 +1010,44 @@ my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes),
 
 globallivingconditions::my.log.f(paste(Sys.time(),
                                        "Starting processing the",
-                                       length(areas.by.size.classes[[i]]),
+                                       length(multiple.areas.one.tiff),
                                        "easy ones", length(multiple.areas.one.tiff),
                                        "tifs", unlist(length(multiple.areas.one.tiff)),
                                        "total areas"), "deforestation.log")
 
-## Since raster is diskbounded, more than 8 threads is probably not useful
-cl <- snow::makeCluster(4, type = "SOCK")
+## Since raster is diskbounded, limit the number of threads.
+if(file.exists("/mnt/c")) {
+    ## my laptop
+    n.nodes <- 4
+} else {
+    ## default, suits my server
+    n.nodes <- 6
+}
+
+cl <- snow::makeCluster(n.nodes, type = "SOCK")
 
 library(doParallel)
 doParallel::registerDoParallel(cl)
 snow::clusterExport(cl, c("base.url", "dhs.grid", "deforestation.path",
-        "raster.from.file.f", "point.at.corners.f", "url.from.point.f",
+        "point.at.corners.f", "url.from.point.f",
         "url.from.file.f", "file.name.from.bbox.f", "fetch.raster",
-        "average.coverage.over.time.directly.from.single.file.fast",
-        "temporal.loss.directly.from.possible.multiple.files", "my.years"))
+        "average.coverage.over.time.directly.from.single.file.pointer.fast",
+        "my.years"))
 
 snow::clusterEvalQ(cl, {
     ## configure raster to prefer RAM
     library(raster)
-    rasterOptions(
-        memfrac   = 0.2, ## ensure at least 4 processes fit 
-        chunksize = 5e7
-    )
+    if(file.exists("/mnt/c")) {
+        rasterOptions(        
+            ## my laptop
+            memfrac   = 0.2 ## ensure at least 4 processes fit
+        )
+    } else {
+        rasterOptions(
+            memfrac   = 1/7, ## ensure at least 6 processes fit 
+            chunksize = 5e7
+        )
+    }
 })
 
 easy.ones <- data.table::rbindlist(foreach::foreach(
