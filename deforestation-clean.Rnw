@@ -510,7 +510,8 @@ average.coverage.over.time.directly.from.single.file.pointer.fast <- function(
 
   # Match your original behavior: only consider cells that are non-NA in loss
   coverage <- cover_vals[these.are.within.the.area]
-  rm(cover_vals); gc(FALSE)
+    rm(cover_vals); gc(verbose = FALSE)
+    raster::removeTmpFiles(h=0)
 
   average.coverage.at.t0 <- mean(coverage)
 
@@ -932,7 +933,8 @@ temporal.loss.directly.from.possible.multiple.files <- function(index,
     return(temporal.loss)
 }
 
-my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes),
+## my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes),
+my.means <- data.table::rbindlist(sapply(1:4,
    function(i) {
        ## Look for an already existing data.table for this task
        file.name <- paste0("temporal.loss.i_", i, ".RDS")
@@ -971,7 +973,7 @@ my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes),
                ## we can be sure all the large areas are processed sequentially,
                ## and then they can be allowed more RAM than the default 0.6.
                chunksize = 5e7
-           )
+           )           
        })
        
        results <- data.table::rbindlist(foreach::foreach(
@@ -1040,11 +1042,22 @@ snow::clusterEvalQ(cl, {
     if(file.exists("/mnt/c")) {
         rasterOptions(        
             ## my laptop
-            memfrac   = 0.2 ## ensure at least 4 processes fit
+            memfrac   = 1/(1 + n.nodes)
+            chunksize = 5e6
         )
+
+        my_canProcessInMemory <- function(x, n = 4, verbose = FALSE) {
+            ## Example: treat operations as if they only needed 2 rasters worth
+            ## raster::canProcessInMemory(x, n = 2, verbose = verbose)
+            return(TRUE)
+        }
+
+        ## Mask it on the search path
+        assign("canProcessInMemory", my_canProcessInMemory, envir = .GlobalEnv)
+        
     } else {
         rasterOptions(
-            memfrac   = 1/7, ## ensure at least 6 processes fit 
+            memfrac   = 1/(1 + n.nodes)
             chunksize = 5e7
         )
     }
