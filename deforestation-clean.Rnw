@@ -85,9 +85,9 @@ if(Sys.info()["sysname"] == "Windows"){
 @
 
 <<config>>=
-my.countries <- c("Senegal", "Gambia", "Guinea", "Sierra Leone", "Liberia", "Mali", "Cote d'Ivoire", "Burkina Faso", "Ghana", "Benin", "Togo", "Nigeria", "Chad", "Cameroon", "Sudan", "Ethiopia", "Sudan", "Gabon", "Congo", "Congo Democratic Republic", "Uganda", "Rwanda", "Kenya", "Tanzania", "Angola", "Malawi", "Mozambique", "Zambia", "Zimbabwe", "Namibia", "Lesotho", "South Africa", "Eswatini", "Madagascar", "Egypt", "Tunisia", "Morocco", "Burundi", "Mauritania")
+## my.countries <- c("Senegal", "Gambia", "Guinea", "Sierra Leone", "Liberia", "Mali", "Cote d'Ivoire", "Burkina Faso", "Ghana", "Benin", "Togo", "Nigeria", "Chad", "Cameroon", "Sudan", "Ethiopia", "Sudan", "Gabon", "Congo", "Congo Democratic Republic", "Uganda", "Rwanda", "Kenya", "Tanzania", "Angola", "Malawi", "Mozambique", "Zambia", "Zimbabwe", "Namibia", "Lesotho", "South Africa", "Eswatini", "Madagascar", "Egypt", "Tunisia", "Morocco", "Burundi", "Mauritania")
 
-# my.countries <- c("Angola", "Tanzania", "Morocco", "Egypt", "Mauritania", "South Africa", "Nigeria", "Congo Democratic Republic")
+my.countries <- c("Gabon", "Malawi")
 
 if(!exists("my.countries")){
     my.countries = NULL
@@ -203,6 +203,17 @@ for(i in 1:length(bad.names)){
                                    colnames(country.data), fixed = TRUE)
 }
 @
+
+Construct, or load a pre-existing, partitioning of the study area. The package «globallivingconditions« provides a partitioning based on the where there are existing, repeated, micro data measurements of living conditions, which can turn out to be useful. However, that requirement tend to produce areas that might be too large for the purpose of analysing local effects of deforestation. Due to the high resolution of the satellite imaging, the level of forestation, and the level of deforestation is computationally expensive to calculate for anything but small areas, so we want to avoid re-calculating averages when more data arrives and the partitioning is changed. Instead, having a global database with forestation level and deforestation for all administrative areas in the highest resolution available, coupled with a database of how large each area is, and under what higher level regions they fall would make computing the average for the higher level area computationally cheap, at least if each smaller area falls under only one higher level region. Otherwise (smaller areas can overlap more than one higher level region) one would have to divide the smaller area into one part for each higher level region they fall into, and only include certain parts (which sizes must also be calculated).
+
+Starting with the easy case: each administrative area at the lower level falls into exactly one administrative area at the higher level, a weighted average for the higher level region can be constructed if the followin information is stored: forestation state at time t\[0\], deforestation at time t\[k\], size of the lower level region (in square meter, so the polygon needs to be projected to a metric coordinate system), the identifier of the region at one level higher up in the hierarchy (it is convenient to have the identifiers of all higher levels accessible directly), the level this statistic is calculated at (1 for the top regions, 2 and 3 are commonly existing lower levels, some countries may have 4 even 5 levels).
+
+To store this information compactly (assuming the tree structure is adequate), only store the name of one step higher (unless the statistic measured is for the top level region 1 already).
+
+\begin{table}
+  country & gadm level & name & parent name & forestation at t0 & deforestation at t1 & ... at t23 \\ % 23 if using a database that includes data up to 2023
+  Malawi  & 3          & 
+\end{table}
 
 To identify which grid cell(s) of deforestation data cover the gadm region, find the North West corner, that is, «max(latitude)« and «min(longitude)« of the bounding box, and that gives the first needed cell. Then extend to east and south if necessary. Assume no region covers more than four grid cells.
 
@@ -1378,6 +1389,24 @@ colnames(foo) <- c("FC.T0", "DF", "GDP", "year", "area", "EduY", "D.",
 foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
 library(xtable)
 print(xtable(foo, digits = c(0, 1, 2, 0, rep(0, 2), 2, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Forest Coverage at T0 ('FC.T0'), Deforestation ('DF'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.').", align = c(rep("r", 5), "p{4cm}", rep("r", 4))), include.rownames = FALSE, tabular.environment = "longtable", floating = FALSE)
+@ 
+
+<<distribution-plot-shelter, fig.cap = "The joint distribution of initial state and deforestation.", dev = "png">>=
+load("data.sets_and_my.dt.with.temporal.loss.RData")
+distribution.1 <- my.dt.with.temporal.loss[ , list(coverage.at.t0 = unique(
+         coverage.at.t0), loss.at.2023 = unique(V23)), by = superClusterID]
+library(ks); library(viridisLite)
+H <- Hpi(cbind(distribution.1$coverage.at.t0, distribution.1$loss.at.2023))
+k <- kde(cbind(distribution.1$coverage.at.t0, distribution.1$loss.at.2023),
+         H, xmin = c(0, 0), xmax = c(80, 20))
+plot(k, display = "filled.contour", cont = 1:100,
+     xlab = "Forest coverage year 2000", ylab = "lost forest year 2023",
+     col = viridis(101))
+## percent contours
+plot(k, cont = c(50, 60, 70, 80, 90), add = TRUE)
+rm(my.dt.with.temporal.loss)
+gc(verbose = FALSE)
+
 @ 
 
 Fit models
