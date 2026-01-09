@@ -1024,6 +1024,9 @@ if(file.exists("/mnt/c")) {
 } else {
     ## default, suits my server
     n.nodes <- 6
+    deforestation.path <- paste0("/media/sf_Our_data/Hans/Onedrive/",
+      "University of Gothenburg/Deforestation and",
+      " poverty - Forest coverage/")
 }
 
 cl <- snow::makeCluster(n.nodes, type = "SOCK")
@@ -1034,7 +1037,7 @@ snow::clusterExport(cl, c("base.url", "dhs.grid", "deforestation.path",
         "point.at.corners.f", "url.from.point.f",
         "url.from.file.f", "file.name.from.bbox.f", "fetch.raster",
         "average.coverage.over.time.directly.from.single.file.pointer.fast",
-        "my.years"))
+        "my.years", "n.nodes"))
 
 snow::clusterEvalQ(cl, {
     ## configure raster to prefer RAM
