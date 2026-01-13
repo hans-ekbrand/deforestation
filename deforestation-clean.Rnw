@@ -1096,6 +1096,7 @@ temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index,
 }
 
 ## Split tasks by RAM requirements
+library(future.apply)
 plan(multisession, workers = 7)
 
 area.sizes <- future_sapply(dhs.grid@polygons, function(p) {
@@ -1104,22 +1105,16 @@ area.sizes <- future_sapply(dhs.grid@polygons, function(p) {
   sum(vapply(rings, function(r) geosphere::areaPolygon(slot(r, "coords")), numeric(1)))
 }, future.seed=TRUE)
 
-## For all regions, derive the necessary grid cells.
-files.required <- sapply(1:length(dhs.grid), function(i) {
+large.polygons <- which(area.sizes > 5e9)
+
+## For all small regions, derive the necessary grid cells.
+non.large.polygons <- (1:length(dhs.grid))[-large.polygons]
+files.required <- future_sapply(non.large.polygons, function(i) {
     file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]),
                           layer="treecover2000")
-})
+}, future.seed=TRUE)
 
-## files.requiring.single.grid.cell <- which(sapply(files.required,
-##                                                  length) == 1)
-## files.requiring.multiple.grid.cells <- which(sapply(files.required,
-##                                                     length) > 1)
-
-files.required.string <- sapply(1:length(dhs.grid), function(i) {
-    paste(file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]),
-                                layer="treecover2000"), collapse = ", ")
-})
-
+files.required.string <- sapply(files.required, paste, collapse = ", ")
 files.required.unique.string <- unique(files.required.string)
 files.required.unique <- unique(files.required)
 
@@ -1131,65 +1126,89 @@ categories.of.requirements <- sapply(unique(files.required.unique.string),
 
 single.tiff.requirements <- categories.of.requirements[which(
     sapply(files.required.unique, length) == 1)]
-## multiple.areas.one.tiff <- single.tiff.requirements[
-##     which(sapply(single.tiff.requirements, length) > 1)]
 
-## ## Start with the tricky ones, those that requires multiple tiff files.
-## remaining.ones <- (1:length(dhs.grid))[-unlist(multiple.areas.one.tiff)]
+multiple.tiff.requirements <- categories.of.requirements[which(
+    sapply(files.required.unique, length) > 1)]
 
-## ## Split tasks by RAM requirements
-## area.sizes <- geosphere::areaPolygon(dhs.grid[remaining.ones])
-
-## n.cores <- parallelly::availableCores(method = c("Slurm", "system"))
-
-## optimal settings depends both on the hardware, and on the
-## 
-
-## If RAM is plenty, then divide differently
-## This is for a RAM restricted system
-## my.thresholds <- quantile(area.sizes,
-##                           probs = c(0, 0.5, 0.7, 0.95, 0.99, 1.0))
-## parallelization.settings <- c(n.cores-1, floor(n.cores/2),
-##                               max(floor(n.cores/4), 3), 2, 1)
-## areas.by.size.classes <- sapply(1:(length(my.thresholds)-1),
-##                                 function(i) {
-##     remaining.ones[which(area.sizes > my.thresholds[i] &
-##                          area.sizes <= my.thresholds[i+1])] })
-
-## ## For my laptop (32GB RAM, 22 logical cores, 16 physical cores)
-## if(file.exists("/mnt/c")) {
-##     ## It seems the disk is the bottleneck when using 22 cores,
-##     parallelization.settings <- c(8, 6, 4, 3, 1)
-## }
-
-## ## If RAM is practically unrestricted, just order by size (largest first),
-## ## make some arbitrary split and use all cores.
-## ## The condition below is true on systems with much RAM
-## if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/hans")) {
-##   my.thresholds <- quantile(area.sizes, probs = c(0, 0.5, 1.0))
-##   parallelization.settings <- rep(n.cores-1,
-##                                   times = length(my.thresholds) - 1)
-##   my.order <- order(area.sizes, decreasing = TRUE)
-##   the.largest.half <- remaining.ones[my.order[1:(length(area.sizes)/2-1)]]
-##   the.smallest.half <- remaining.ones[my.order[(
-##       length(area.sizes)/2):length(area.sizes)]]
-##   interleaved <- c(rbind(the.largest.half, rev(the.smallest.half)))
-##   areas.by.size.classes <- list(interleaved[1:(length(
-##       area.sizes)/2-1)],interleaved[(length(
-##       area.sizes)/2):length(area.sizes)])
-## }
+## order single.tiff.requirements by estimated computation cost (ignore size)
+tile_cost <- sapply(single.tiff.requirements, length)
+ord <- order(tile_cost, decreasing = TRUE)
+single.tiff.requirements <- single.tiff.requirements[ord]
 
 @
 
 \section{Efficient parallelization}
 \label{sec:effic-parall}
 
-There are three classes of cases that each need a customized strategy for parallelization. The first class are those areas that are so large that processing the area in one go would require more RAM than the total amount of RAM divided by the number of processor cores. For these areas an algorithm that parallelizes by dividing up the area in smaller parts is used. At any given moment in time work is only being done on parts of a single area, but up to four different tiles can be used simultaneously. The second class are small areas that intersect with a single tile. For these, we avoid recreating the raster corresponding to that tile, in stead a single raster is created per tile, and all calculations use the same raster (the raster is just a structure in memory , but it does require reading metadata from disk which we minimize). The third class are small areas that intersect at least two tiles. 
+There are three classes of cases that each need a customized strategy for parallelization. The first class are those areas that are so large that processing the area in one go would require more RAM than the total amount of RAM divided by the number of processor cores. For these areas an algorithm that parallelizes by dividing up the area in smaller parts is used. At any given moment in time work is only being done on parts of a single area, but up to four different tiles can be used simultaneously. The second class are small areas that intersect with a single tile. For these, we avoid recreating the raster corresponding to that tile, in stead a single raster is created per tile, and all calculations use the same raster (the raster is just a structure in memory , but it does require reading metadata from disk which we minimize). The third class are small areas that intersect at least two tiles.
+
+\subsection{Small polygons - single tile required}
+\label{sec:small-polyg-single}
+
+Setup a cluster, organise by the required tile. Evaluate «temporal.loss.from.single.file.pointer.f()«, which is basically a wrapper around «average.coverage.over.time.directly.from.single.file.pointer.fast()« but that also creates the needer raster pointers, on all areas that require the same single tile.
+
+<<small.polygons>>=
+library(foreach); library(future); library(doRNG)
+
+small.areas.means.from.single.tiff <- data.table::rbindlist(
+   foreach(i=1:length(single.tiff.requirements)),
+           .options.future = list(scheduling = 1, chunk.size = 1)) %dorng% {
+
+ ## Make note in the log that we started working with this tiff, so that we can track progress.
+ globallivingconditions::my.log.f(paste(Sys.time(),
+             "Starting to work with tiff number", i, "which is used by",
+             length(single.tiff.requirements[[i]]), "polygons"),
+                 "deforestation.log")    
+
+ ## create the two file names needed for this batch.
+ my.cover.file <- names(single.tiff.requirements)[i]
+ my.loss.file <- gsub("treecover2000", "lossyear", my.cover.file, fixed = TRUE)
+ fetch.raster(c(my.cover.file, my.loss.file), deforestation.path = deforestation.path)
+ my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.file))
+ my.loss.raster <- raster::raster(paste0(deforestation.path, my.loss.file))
+
+ small.areas <- single.tiff.requirements[[i]]
+
+ ## define a function
+ temporal.loss.from.single.file.pointer.f <- function(j) {
+    polygon <- dhs.grid[j]
+    my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(
+        polygon, my.cover.raster, my.loss.raster)
+    absolute.loss.per.year <- sapply(1:(length(
+        my.raster.stats$coverage)-1), function(k) {
+            my.raster.stats$coverage[["t0"]] -
+                my.raster.stats$coverage[[paste0("t", k)]] })
+    globallivingconditions::my.log.f(paste(Sys.time(),
+              "Ready with temporal loss for area", names(dhs.grid)[j],
+              "size", round(my.raster.stats$size/1e6), "Km^2"),
+                 "deforestation.log")    
+    temporal.loss <- cbind(data.table::data.table(
+                                           region = names(
+                                               dhs.grid)[j],
+                                           my.raster.stats$size,
+                                           coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
+                           t(data.frame(absolute.loss.per.year)))
+}
+
+ ## iterate over all indices, note only normal sequential sappply() here,
+ ## because this is the inner loop.
+ my.temp.dt <- data.table::rbindlist(sapply(non.large.polygons[small.areas],
+                             temporal.loss.from.single.file.pointer.f, simplify = FALSE))
+})
+    
+@
+
+Remaining ones are small and requires more than one tile. Just apply temporal.loss.directly.from.possible.multiple.files on all of them.
+
+<<small.multiple.tiles, eval=FALSE>>=
+
+future_sapply(temporal.loss.directly.from.possible.multiple.files, future.seed=TRUE)
+
+@
 
 <<large.polygons>>=
-these <- which(area.sizes > 5e9)
 if(! file.exists("large.polygons.RData")){
-    my.means <- sapply(these, temporal.loss.forking.version, deforestation.path = deforestation.path)
+    my.means <- sapply(large.polygons, temporal.loss.forking.version, deforestation.path = deforestation.path)
     my.means.dt <- data.table::rbindlist(my.means)
     saveRDS(my.means.dt, file = "large.polygons.RDS")
 } else {
@@ -1197,100 +1216,6 @@ if(! file.exists("large.polygons.RData")){
 }
 @
 
-
-
-<<small.polygons>>=
-## Setup a cluster, organise by required tile,
-## evaluate temporal.loss.from.single.file.pointer.f() which is basically a wrapper around
-## average.coverage.over.time.directly.from.single.file.pointer.fast() on all areas that
-## require the same single tile.
-
-library(foreach); library(future); library(doRNG)
-globallivingconditions::setup.future.f(n=parallelly::availableCores(method = c("Slurm", "system"))-1,
-                                       type = "multisession")
-
-temporal.loss.from.single.file.pointer.f <- function(i) {
-    polygon <- dhs.grid[i]
-    my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(
-        polygon, my.cover.raster, my.loss.raster)
-    absolute.loss.per.year <- sapply(1:(length(
-        my.raster.stats$coverage)-1), function(i) {
-            my.raster.stats$coverage[["t0"]] -
-                my.raster.stats$coverage[[paste0("t", i)]] })
-    globallivingconditions::my.log.f(paste(Sys.time(),
-              "Ready with temporal loss for area", names(dhs.grid)[i],
-              "size", round(my.raster.stats$size/1e6), "Km^2"),
-                 "deforestation.log")    
-    temporal.loss <- cbind(data.table::data.table(
-                                           region = names(
-                                               dhs.grid)[i],
-                                           my.raster.stats$size,
-                                           coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
-                           t(data.frame(absolute.loss.per.year)))
-}
-
-## Organise by required tile, use a single raster for all areas in the same tile.
-
-small.areas.means.from.single.tiff <- data.table::rbindlist(
-        foreach(i=(1:length(single.tiff.requirements))) %dorng% {                                                                                                            
-
-        ## Filter out large areas already solved.
-        maybe.these <- single.tiff.requirements[[i]]
-        discard.these <- match(maybe.these, these)
-        if(length(discard.these) > 0) {
-            small.areas <- maybe.these[-which(is.na(discard.these) == FALSE)]
-        } else {
-            small.areas <- maybe.these
-        }
-        if(length(small.areas) == 0){
-            ## All areas were large, already taken care of
-            return(NULL)
-        }
-
-temporal.loss.from.single.file.pointer.f <- function(i) {
-    polygon <- dhs.grid[i]
-    my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(
-        polygon, my.cover.raster, my.loss.raster)
-    absolute.loss.per.year <- sapply(1:(length(
-        my.raster.stats$coverage)-1), function(i) {
-            my.raster.stats$coverage[["t0"]] -
-                my.raster.stats$coverage[[paste0("t", i)]] })
-    globallivingconditions::my.log.f(paste(Sys.time(),
-              "Ready with temporal loss for area", names(dhs.grid)[i],
-              "size", round(my.raster.stats$size/1e6), "Km^2"),
-                 "deforestation.log")    
-    temporal.loss <- cbind(data.table::data.table(
-                                           region = names(
-                                               dhs.grid)[i],
-                                           my.raster.stats$size,
-                                           coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
-                           t(data.frame(absolute.loss.per.year)))
-}
-
-        ## create the two file names needed for this batch.
-        my.cover.file <- names(single.tiff.requirements)[i]
-        my.loss.file <- gsub("treecover2000", "lossyear", my.cover.file, fixed = TRUE)
-        fetch.raster(c(my.cover.file, my.loss.file), deforestation.path = deforestation.path)
-        my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.file))
-        my.loss.raster <- raster::raster(paste0(deforestation.path, my.loss.file))
-
-        ## todo, make this a properly shared function,
-        ## for now, just copy/paste it.
-        
-        ## iterate over all indices
-        my.temp.dt <- data.table::rbindlist(sapply(small.areas,
-                                temporal.loss.from.single.file.pointer.f, simplify = FALSE))
-})
-    
-@
-
-Remaining ones are small and requires more than one tile. Just apply temporal.loss.directly.from.possible.multiple.files on all of them.
-
-<<small.multiple.tiles>>=
-
-future_sapply(temporal.loss.directly.from.possible.multiple.files, future.seed=TRUE)
-
-@ 
 
 <<multiple.grid.cell.areas>>=
 my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes),
