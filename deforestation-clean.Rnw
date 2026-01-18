@@ -1158,7 +1158,7 @@ Setup a cluster, organise by the required tile. Evaluate «temporal.loss.from.si
 library(foreach); library(future); library(doRNG)
 
 small.areas.means.from.single.tiff <- data.table::rbindlist(
-   foreach(i=1:length(single.tiff.requirements)),
+   foreach(i=1:length(single.tiff.requirements),
            .options.future = list(scheduling = 1, chunk.size = 1)) %dorng% {
 
  ## Make note in the log that we started working with this tiff, so that we can track progress.
@@ -1188,7 +1188,7 @@ small.areas.means.from.single.tiff <- data.table::rbindlist(
     globallivingconditions::my.log.f(paste(Sys.time(),
               "Ready with temporal loss for area", names(dhs.grid)[j],
               "size", round(my.raster.stats$size/1e6), "Km^2"),
-                 "deforestation.log")    
+                 "deforestation.log")
     temporal.loss <- cbind(data.table::data.table(
                                            region = names(
                                                dhs.grid)[j],
