@@ -1361,7 +1361,7 @@ temporal.loss.non.forking.version <- function(
     return(temporal.loss)
 }
 
-library(foreach); library(future); library(doRNG)
+library(foreach); library(future); library(doRNG); library(future.apply)
 n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
 plan(multisession, workers = n.cores)
 
