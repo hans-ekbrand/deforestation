@@ -1362,7 +1362,7 @@ temporal.loss.non.forking.version <- function(
 }
 
 library(foreach); library(future); library(doRNG)
-n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
+n.cores <- parallelly::availableCores(method = c("parallelly" "Slurm", "system"))-1
 plan(multisession, workers = n.cores)
 
 my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE)
