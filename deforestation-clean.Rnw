@@ -1739,7 +1739,7 @@ plot(my.borders["GID_0"], col = NA, border = "red", add = TRUE)
 
 The basic unit in the data set is a rather small administrative area, on average there are \Sexpr{round(length(dhs.grid) / length(country.codes))} such areas in each country in the data set. For each DHS wave, area and type of deprivation, we aggregate the number of deprived persons, and the total number of surveyed persons, which in most areas gives repeated measurements. The data on deforestation and the country level variables are available for every year, and is merged to a single dataset. In addition we also use the larger top level regions in each country, and the whole country to get two baselines for the change in deprivation of time. These baselines are useful in that they make sure that the signal picked up by the regression terms for deforestation is uncorrelated to trends that are shared by local areas that differ in level of deforestation.
 
-Table \vref{tab:data} provides an excerpt from the data set that includes data on severe shelter deprivations, containing \Sexpr{nrow(test.dt)} data points about \Sexpr{length(unique(test.dt$superClusterID))} unique areas.
+Table \vref{tab:data} provides an excerpt from the data set that includes data on severe shelter deprivations, containing \Sexpr{ # nrow(test.dt)} data points about \Sexpr{ # length(unique(test.dt$superClusterID))} unique areas.
 
 <<continued.excerpt, echo = FALSE, results = "asis">>=
 library(data.table)
