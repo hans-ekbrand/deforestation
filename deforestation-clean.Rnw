@@ -1156,6 +1156,9 @@ Setup a cluster, organise by the required tile. Evaluate «temporal.loss.from.si
 
 <<small.polygons>>=
 library(foreach); library(future); library(doRNG)
+n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
+plan(multisession, workers = n.cores)
+doFuture::registerDoFuture()
 
 small.areas.means.from.single.tiff <- data.table::rbindlist(
    foreach(i=1:length(single.tiff.requirements),
