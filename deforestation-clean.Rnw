@@ -1363,8 +1363,9 @@ temporal.loss.non.forking.version <- function(
 
 library(foreach); library(future); library(doRNG); library(future.apply)
 n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
+globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
+          "deforestation.log")
 plan(multisession, workers = n.cores)
-
 my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE)
 
 @ 
