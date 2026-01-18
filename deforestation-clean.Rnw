@@ -861,11 +861,12 @@ temporal.loss.forking.version <- function(
     ## But if the polygon is large, parallelize at this level:
     ## (call this particular version, or maybe use a run-time argument)
 
-    ## use multisession to fork fast.
+    ## use multicore to fork fast.
     library(future)
     library(doRNG)
-    n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
-    plan(multisession, workers = n.cores)
+    ## n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
+    ## plan(multisession, workers = n.cores)
+    plan(multicore, workers = 7)
     doFuture::registerDoFuture()
     ## ready for foreach and %dorng%
     my.raster.stats <- foreach(p=pieces,
@@ -1156,8 +1157,8 @@ Setup a cluster, organise by the required tile. Evaluate «temporal.loss.from.si
 
 <<small.polygons>>=
 library(foreach); library(future); library(doRNG)
-n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
-plan(multisession, workers = n.cores)
+## n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
+## plan(multisession, workers = n.cores)
 doFuture::registerDoFuture()
 
 small.areas.means.from.single.tiff <- data.table::rbindlist(
