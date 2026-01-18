@@ -62,6 +62,13 @@ if(file.exists("/media/sf_Our_data")) {
       "University of Gothenburg/Deforestation and",
       " poverty - Forest coverage/")
 }
+if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
+    deforestation.path <- paste0("/mimer/NOBACKUP/groups/",
+                                 "globalpoverty1/hans/Deforestation/")
+    country.data.path <- paste0(deforestation.path,
+                                "Country data")
+}
+
 @
 
 <<install.packages, cache = TRUE>>=
