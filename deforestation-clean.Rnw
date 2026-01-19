@@ -1379,7 +1379,7 @@ globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future
           "deforestation.log")
 plan(multisession, workers = n.cores)
 
-small.multiple.tiles <- future_sapply(multiple.tiff.requirements, temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp")
+small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp")
 
 @
 
