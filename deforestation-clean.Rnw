@@ -1383,6 +1383,115 @@ small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.re
 
 @
 
+Stitch together the three pieces. Apparently, the `size` column in `small.areas.means.from.single.tiff` is wrongly called ``V2'', fix that in a way that is robust to the fact that other columns in the data set has the name ``V2''.
+
+<<stitch>>=
+large.polygons.results <- rbindlist(my.means)
+colnames(small.areas.means.from.single.tiff)[2] <- "size"
+small.multiple.tiles.results.long <- as.data.table(small.multiple.tiles, keep.rownames = "variable")
+small.multiple.tiles.results <- transpose(small.multiple.tiles.results.long[, -"variable"])
+setnames(small.multiple.tiles.results, small.multiple.tiles.results.long$variable)
+# fix types
+small.multiple.tiles.results[, region := as.character(region)]
+num_cols <- setdiff(names(small.multiple.tiles.results), "region")
+small.multiple.tiles.results[, (num_cols) := lapply(.SD, as.numeric), .SDcols = num_cols]
+## temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff)
+## Seems there are one area missing from temporal.loss that exists in the grid.
+## names(dhs.grid)[which(names(dhs.grid) %in% temporal.loss$region == FALSE)]
+## [1] "604.Puno.Sandia.Alto Inambari + Limbani + Patambuco"
+## Inspecting this polygon, it seems it has a ring in it.
+## but the size operation did no fail on it: 
+## geosphere::areaPolygon(dhs.grid[which(names(dhs.grid) %in% temporal.loss$region == FALSE)])
+## [1] 4255869610
+## This area was one of the large polygons
+## 13029 %in% unlist(large.polygons)
+## [1] TRUE
+## > 13029 %in% non.large.polygons[unlist(multiple.tiff.requirements)]
+## [1] FALSE
+## > 13029 %in% non.large.polygons[unlist(single.tiff.requirements)]
+## [1] FALSE
+## grep 13029 deforestation.log
+## 2026-01-18 23:37:47 in temporal.loss.non.forking.version() working with index = 13029 region name: 604.Puno.Sandia.Alto Inambari + Limbani + Patambuco polygon too small: 4256 Km^2 should be at least 5 000 Km^2
+## So it was skipped because it wasn't large enough after all.
+
+missing.piece <- temporal.loss.directly.from.possible.multiple.files(which(names(dhs.grid) %in% temporal.loss$region == FALSE), deforestation.path = deforestation.path)
+temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff, missing.piece)
+
+## create a SPDF object, with one layer for each year.
+library(data.table)
+library(sp)
+library(raster)
+
+# 1) Match rows in temporal.loss to polygon order in dhs.grid
+#    (assumes names(dhs.grid) are the region IDs)
+setDT(temporal.loss)
+
+# keep only needed columns (drop size)
+keep_cols <- c("region", "coverage.at.t0", paste0("V", 1:23))
+dt <- temporal.loss[, ..keep_cols]
+
+# reorder to match polygon names
+idx <- match(names(dhs.grid), dt$region)
+if (anyNA(idx)) {
+  missing <- names(dhs.grid)[is.na(idx)]
+  stop("These polygons have no matching 'region' row in temporal.loss:\n",
+       paste(missing, collapse = ", "))
+}
+dt <- dt[idx]
+
+# also verify there are no duplicated regions (optional but recommended)
+if (any(duplicated(dt$region))) {
+  stop("Duplicated region names in temporal.loss (cannot 1:1 match to polygons).")
+}
+
+## Drop "region", access it via rownames(spdf@data) instead.
+dt[, region := NULL, ]
+
+# 2) Base SPDF with all attributes (coverage.at.t0 + V1..V23)
+#    row.names must align with polygon IDs
+spdf <- SpatialPolygonsDataFrame(
+  Sr = dhs.grid,
+  data = as.data.frame(dt),
+  match.ID = FALSE
+)
+row.names(spdf@data) <- names(dhs.grid)
+
+library(sf)
+sfdf <- st_as_sf(spdf)
+
+@
+
+<<>>=
+load("~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/africa-lowres.RData") ## "africa"
+africa_extent <- st_as_sf(africa)
+st_crs(africa_extent) <- st_crs(sfdf)
+
+@ 
+
+<<coverage-t0, fig.cap = "Forest coverage in year 2000. Africa.">>=
+bbox <- st_bbox(
+  c(xmin = -30,
+    ymin = -60,
+    xmax = 30,
+    ymax = 30),
+  crs = st_crs(sfdf)
+)
+sel <- st_intersects(sfdf, st_as_sfc(bbox), sparse = FALSE)[,1]
+sel <- st_intersects(sfdf, africa_extent, sparse = FALSE)[,1]
+sfdf_sub <- sfdf[sel, ]
+
+plot(
+  sfdf_sub["coverage.at.t0"],
+  breaks = seq(0, 100, length.out = 101),
+  pal = function(n) rev(terrain.colors(n)),
+  lwd = 0.1,
+  key.pos = 4,      # legend on the right
+  key.length = 0.8,
+  main = "Forest coverage at year 2000"
+)
+
+@ 
+
 <<multiple.grid.cell.areas, eval = FALSE>>=
 my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes),
    function(i) {
