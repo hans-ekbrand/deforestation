@@ -67,6 +67,7 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
                                  "globalpoverty1/hans/Deforestation/")
     country.data.path <- paste0(deforestation.path,
                                 "Country data/")
+    africa.map.path <- "~/maps/"
 }
 
 @
@@ -1385,7 +1386,7 @@ small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.re
 
 Stitch together the three pieces. Apparently, the `size` column in `small.areas.means.from.single.tiff` is wrongly called ``V2'', fix that in a way that is robust to the fact that other columns in the data set has the name ``V2''.
 
-<<stitch>>=
+<<stitch, eval = ! file.exists("my.spdf.RDS")>>=
 large.polygons.results <- rbindlist(my.means)
 colnames(small.areas.means.from.single.tiff)[2] <- "size"
 small.multiple.tiles.results.long <- as.data.table(small.multiple.tiles, keep.rownames = "variable")
@@ -1459,36 +1460,38 @@ row.names(spdf@data) <- names(dhs.grid)
 library(sf)
 sfdf <- st_as_sf(spdf)
 
+saveRDS(spdf, file = "my.spdf.RDS")
+saveRDS(sfdf, file = "my.sfdf.RDS")
+saveRDS(temporal.loss, file = "temporal.loss.RDS")
+
 @
 
-<<>>=
-load("~/annex/projekt/global-living-conditions/stora-eller-statiska-filer/africa-lowres.RData") ## "africa"
+<<load.afria.map>>=
+load(paste0(africa.map.path, "~/annex/projekt/global-living-conditions/",
+             "stora-eller-statiska-filer/africa-lowres.RData")) ## "africa"
 africa_extent <- st_as_sf(africa)
 st_crs(africa_extent) <- st_crs(sfdf)
 
 @ 
 
-<<coverage-t0, fig.cap = "Forest coverage in year 2000. Africa.">>=
-bbox <- st_bbox(
-  c(xmin = -18,
-    ymin = -35,
-    xmax = 52,
-    ymax = 42),
-  crs = st_crs(sfdf)
-)
-sel <- st_intersects(sfdf, st_as_sfc(bbox), sparse = FALSE)[,1]
-# sel <- st_intersects(sfdf, africa_extent, sparse = FALSE)[,1]
-sfdf_sub <- sfdf[sel, ]
+<<coverage-t0, fig.cap = "Forest coverage in year 2000. Africa.", fig.width=6.45, fig.height=6.45>>=
+## Select polygon that intersects with the polygons mainland africa and Madagascar
+## africa_extent is a single object but contains two polygons, which makes sel 
+## have 2 columns
+sel <- st_intersects(sfdf, africa_extent, sparse = FALSE)
+these.polygons.in.africa <- which(apply(sel, 1, any))
 
 plot(
-  sfdf_sub["coverage.at.t0"],
+  sfdf_sub[these.polygons.in.africa, "coverage.at.t0"],
   breaks = seq(0, 100, length.out = 101),
   pal = function(n) rev(terrain.colors(n)),
   lwd = 0.05,
   key.pos = 4,      # legend on the right
   key.length = 0.8,
-  main = "Forest coverage at year 2000"
+  main = "Forest coverage at year 2000",
+  reset = FALSE
 )
+plot(st_geometry(africa_extent), add = TRUE)
 
 @
 
