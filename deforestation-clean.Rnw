@@ -1493,6 +1493,11 @@ plot(
 @
 
 <<south-america>>=
+borders.temp <- sapply(paste0(gis.path, iso.3166$String.code[match(country.codes.map[country.codes.map$m49 == "Latin America and the Caribbean", "UN"], iso.3166$numeric)], "_adm0.rds"), function(x) { if(file.exists(x)) { st_as_sf(readRDS(x)) } })
+## Remove NULL elements (countries in country.codes.map, for which there were no gadm file).
+
+borders <- Filter(Negate(is.null), borders.temp)
+
 bbox_latam <- st_as_sfc(
     st_bbox(
   c(
@@ -1506,6 +1511,8 @@ bbox_latam <- st_as_sfc(
 )
 sel <- st_intersects(sfdf, bbox_latam, sparse = FALSE)[,1]
 sfdf_sub <- sfdf[sel, ]
+
+
 plot(
   sfdf_sub["coverage.at.t0"],
   breaks = seq(0, 100, length.out = 101),
