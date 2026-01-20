@@ -35,7 +35,7 @@ install_bitbucket(repo = "hansekbrand/iwi")
 install_bitbucket(repo = "hansekbrand/DHSharmonisation", upgrade = "never", ref = "debug")
 @ 
 
-<<load.data.using.child.document, child=system.file("dhs-debug-child.Rnw", package="globallivingconditions")>>=
+<<load.data.using.child.document, child=system.file("dhs-debug-child.Rnw", package="globallivingconditions"), eval = ! file.exists("final.RDS")>>=
 @ 
 
 \section{Requirements}
@@ -47,6 +47,8 @@ The program downloads almost all of the necessary data from the internet, but da
 \item "API\_NV.AGR.TOTL.ZS\_DS2\_en\_excel\_v2\_5728821.xlsx"
 \item "API\_SP.POP.1564.TO\_DS2\_en\_excel\_v2\_5731200.xlsx"
 \end{itemize}
+
+Define paths.
 
 <<setup.more>>=
 country.data.path <- paste0("~/annex/projekt/",
@@ -61,6 +63,8 @@ if(file.exists("/media/sf_Our_data")) {
     deforestation.path <- paste0("/media/sf_Our_data/Hans/Onedrive/",
       "University of Gothenburg/Deforestation and",
       " poverty - Forest coverage/")
+    africa.map.path <- paste0("~/annex/projekt/child-poverty/",
+                              "statiska-eller-stora-filer/")
 }
 if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
     deforestation.path <- paste0("/mimer/NOBACKUP/groups/",
@@ -71,6 +75,8 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
 }
 
 @
+
+Install required packages.
 
 <<install.packages, cache = TRUE>>=
 required.packages <- c("httr", "data.table", "car", "sp", "raster", "devtools",
@@ -88,11 +94,11 @@ devtools::install_github("matthewkling/colors3d")
 
 Each subset includes the average education in years for the adults aged 24-44 in year 2000 and aged 45-65 in year 2021, in order for us to be able to estimate how different the group surveyed in one year is from the group surveyed another year (in the same area), even if the educational level is increasing during the study period. By focussing on the persons who have already aquired their education when the study starts, we make use of the invariant feature of education, it is never lost.
 
+Select variables actually used in the analyses.
+
 <<choose.vars>>=
 library(globallivingconditions)
-my.log.f(paste(Sys.time(), "reading data from disk START"), "deforestation.log")
 my.dt <- readRDS("final.RDS")
-my.log.f(paste(Sys.time(), "reading data from disk FINISH"), "deforestation.log")
 
 vars.to.keep=c("source", "version", "year.of.interview",
                "country.code.ISO.3166.alpha.3", 
@@ -130,25 +136,25 @@ Create a custom subset for each deprivation, including only the cases which have
 <<continued.country>>=
 library("readxl"); library(data.table); library(globallivingconditions)
 country.data <- Reduce(merge, sapply(
-     c("API_NY.GDP.PCAP.CD_DS2_en_excel_v2_5795829.xlsx",
+  c("API_NY.GDP.PCAP.CD_DS2_en_excel_v2_5795829.xlsx",
        "API_NE.EXP.GNFS.ZS_DS2_en_excel_v2_5728793.xlsx",
        "API_NV.AGR.TOTL.ZS_DS2_en_excel_v2_5728821.xlsx",
        "API_SP.POP.1564.TO_DS2_en_excel_v2_5731200.xlsx"), function(x) {
-    temp.dt.1 <- data.table(read_excel(paste0(country.data.path, x), skip = 2))
-    meta.data <- temp.dt.1[["Indicator Name"]][1]
-    temp.dt.1[, c("Indicator Name", "Indicator Code", "Country Name") := NULL, ]
-    temp.dt.2 <- melt(temp.dt.1, id.vars = "Country Code",
-                      variable.name = "raw.year", value.name = meta.data)
-    temp.dt.2[, raw.year := as.numeric(as.character(temp.dt.2$raw.year)), ]
-    ## Create a proper name, based on the tree letter code
+  temp.dt.1 <- data.table(read_excel(paste0(country.data.path, x), skip = 2))
+  meta.data <- temp.dt.1[["Indicator Name"]][1]
+  temp.dt.1[, c("Indicator Name", "Indicator Code", "Country Name") := NULL, ]
+  temp.dt.2 <- melt(temp.dt.1, id.vars = "Country Code",
+                    variable.name = "raw.year", value.name = meta.data)
+  temp.dt.2[, raw.year := as.numeric(as.character(temp.dt.2$raw.year)), ]
+  ## Create a proper name, based on the tree letter code
     temp.dt.2[, country := iso.3166$String[match(`Country Code`,
                                                  iso.3166$String.code)], ]
-    ## Drop the three letter code.
-    temp.dt.2[, `Country Code` := NULL, ]
-    ## Drop cases that have missing data on the identifier variables.
-    temp.dt.3 <- temp.dt.2[is.na(country) == FALSE, ]
-    setkey(temp.dt.3, country, raw.year)
-    return(temp.dt.3)
+  ## Drop the three letter code.
+  temp.dt.2[, `Country Code` := NULL, ]
+  ## Drop cases that have missing data on the identifier variables.
+  temp.dt.3 <- temp.dt.2[is.na(country) == FALSE, ]
+  setkey(temp.dt.3, country, raw.year)
+  return(temp.dt.3)
 }, simplify = FALSE))
 
 ## improve some variable names which has reserved characters in them.
@@ -454,16 +460,7 @@ average.coverage.over.time.directly.from.single.file.fast <- function(
 average.coverage.over.time.directly.from.single.file.pointer.fast <- function(
   polygon, my.cover.raster, my.loss.raster, ...
 ) {
-    ## Loss values under polygon
-    ## loss <- values.from.file.f(my.loss.file, polygon, deforestation.path)
-    
-    ## globallivingconditions::my.log.f(
-    ##   paste(Sys.time(), "extracting from the loss raster START"),
-    ##   "deforestation.log")
     loss <- raster::extract(my.loss.raster, polygon)[[1]]
-    ## globallivingconditions::my.log.f(
-    ##   paste(Sys.time(), "extracting from the loss raster FINISHED"),
-    ##   "deforestation.log")
 
   these.are.within.the.area <- which(!is.na(loss))
   size <- length(these.are.within.the.area)
@@ -479,21 +476,8 @@ average.coverage.over.time.directly.from.single.file.pointer.fast <- function(
     these.were.lost.values  <- loss[these.were.lost.indices]
     rm(loss); gc(FALSE)
 
-    ## Cover values under polygon
-    ## cover_vals <- values.from.file.f(my.cover.file, polygon, deforestation.path)
-
-    ## globallivingconditions::my.log.f(
-    ##   paste(Sys.time(), "extracting from the cover raster START"),
-    ##   "deforestation.log")
-    
     cover_vals <- raster::extract(my.cover.raster, polygon)[[1]]
-
-    ## globallivingconditions::my.log.f(
-    ##   paste(Sys.time(), "extractiong from the cover raster FINISHED"),
-    ##   "deforestation.log")
-    
-
-    ## Match your original behavior: only consider cells that are non-NA in loss
+    ## only consider cells that are non-NA in loss
     coverage <- cover_vals[these.are.within.the.area]
     rm(cover_vals); gc(verbose = FALSE)
     raster::removeTmpFiles(h=0)
@@ -512,11 +496,6 @@ average.coverage.over.time.directly.from.single.file.pointer.fast <- function(
     average.coverage.per.year <- sapply(my.years, my.f)
     names(average.coverage.per.year) <- paste0("t", my.years)
 
-    ## globallivingconditions::my.log.f(
-    ##     paste(Sys.time(), "Ready with temporal loss for an area with", size,
-    ##       "pixels for a polygon of size", round(geosphere::areaPolygon(polygon) / 1e6), "Km^2"),
-    ##     "deforestation.log")
-
     list(
         size = size,
         coverage = c(t0 = average.coverage.at.t0, average.coverage.per.year)
@@ -526,115 +505,6 @@ average.coverage.over.time.directly.from.single.file.pointer.fast <- function(
 @ 
 
 <<function.definitions.for.efficient.parallelization>>=
-
-## split_polygon_by_extents_sp <- function(poly,
-##                                        extents,
-##                                        target_n = 15) {
-##   stopifnot(inherits(poly, "SpatialPolygons"))
-##   stopifnot(length(extents) >= 1)
-
-##   library(sp)
-##   library(raster)
-
-##   # Convert extents to SpatialPolygons
-##   extent_polys <- lapply(extents, function(e) {
-##     if (inherits(e, "Raster")) e <- raster::extent(e)
-##     stopifnot(inherits(e, "Extent"))
-##     as(e, "SpatialPolygons")
-##   })
-
-##   # Ensure CRS consistency
-##   crs_poly <- sp::proj4string(poly)
-##   extent_polys <- lapply(extent_polys, function(p) {
-##     sp::proj4string(p) <- crs_poly
-##     p
-##   })
-
-##   # Intersect polygon with each extent per-tile polygon
-##   per_tile <- lapply(extent_polys, function(ep) {
-##     suppressWarnings(raster::intersect(poly, ep))
-##   })
-##   per_tile <- Filter(function(x) !is.null(x), per_tile)
-
-##   if (length(per_tile) == 0) {
-##     stop("Polygon does not intersect any provided extent.")
-##   }
-
-##   # Compute areas to allocate subdivisions proportionally
-##   areas <- sapply(per_tile, function(p) {
-##     raster::area(p) |> sum(na.rm = TRUE)
-##   })
-##   areas[!is.finite(areas)] <- 0
-
-##   # Number of subdivisions per tile polygon
-##   if (sum(areas) == 0) {
-##     k_per_tile <- rep(1L, length(per_tile))
-##   } else {
-##     raw <- target_n * areas / sum(areas)
-##     k_per_tile <- pmax(1L, round(raw))
-##   }
-
-##   # Helper: split one polygon into k pieces using a grid
-##   split_one <- function(p, k) {
-##     if (k <= 1) return(list(p))
-
-##     bb <- sp::bbox(p)
-##     dx <- bb[1,2] - bb[1,1]
-##     dy <- bb[2,2] - bb[2,1]
-##     if (dx <= 0 || dy <= 0) return(list(p))
-
-##     nx <- max(1L, round(sqrt(k * dx / dy)))
-##     ny <- max(1L, round(k / nx))
-
-##     # Build grid
-##     xs <- seq(bb[1,1], bb[1,2], length.out = nx + 1)
-##     ys <- seq(bb[2,1], bb[2,2], length.out = ny + 1)
-
-##     grid_polys <- list()
-##     idx <- 1
-##     for (i in seq_len(nx)) {
-##       for (j in seq_len(ny)) {
-##         coords <- matrix(c(
-##           xs[i],   ys[j],
-##           xs[i+1], ys[j],
-##           xs[i+1], ys[j+1],
-##           xs[i],   ys[j+1],
-##           xs[i],   ys[j]
-##         ), ncol = 2, byrow = TRUE)
-
-##         grid_polys[[idx]] <- Polygons(list(Polygon(coords)), ID = as.character(idx))
-##         idx <- idx + 1
-##       }
-##     }
-
-##     grid <- SpatialPolygons(grid_polys, proj4string = CRS(crs_poly))
-
-##     # Intersect grid with polygon
-##     pieces <- suppressWarnings(raster::intersect(grid, p))
-##     if (is.null(pieces)) return(list(p))
-
-##     # Convert to list of SpatialPolygons
-##     if (inherits(pieces, "SpatialPolygons")) {
-##       lapply(slot(pieces, "polygons"), function(pg) {
-##         SpatialPolygons(list(pg), proj4string = CRS(crs_poly))
-##       })
-##     } else {
-##       list(p)
-##     }
-##   }
-
-##   # Split all per-tile polygons
-##   out <- list()
-##   for (i in seq_along(per_tile)) {
-##     parts <- split_one(per_tile[[i]], k_per_tile[i])
-##     for (p in parts) {
-##       out[[length(out) + 1]] <- p
-##     }
-##   }
-
-##   out
-## }
-
 split_polygon_by_extents_sp <- function(poly,
                                        extents,
                                        target_n = 15) {
@@ -1220,7 +1090,7 @@ if(! file.exists("large.polygons.RData")){
 }
 @
 
-<<large.polygons.aggressive.parallelisation>>=
+<<large.polygons.aggressive.parallelisation, eval = ! file.exists("my.spdf.RDS")>>=
 temporal.loss.non.forking.version <- function(
          index, deforestation.path, ...) {
 
@@ -1533,173 +1403,6 @@ plot(
 library(sp)
 plot(dhs.grid, lwd = 0.05)
 @ 
-
-<<multiple.grid.cell.areas, eval = FALSE>>=
-my.means <- data.table::rbindlist(sapply(1:length(areas.by.size.classes),
-   function(i) {
-       ## Look for an already existing data.table for this task
-       file.name <- paste0("temporal.loss.i_", i, ".RDS")
-       if(file.exists(file.name)) {
-           globallivingconditions::my.log.f(paste(Sys.time(),
-                  "Returning pre-existing data.table for size class",
-                  i), "deforestation.log")
-           return(readRDS(file.name))
-       }
-                                             
-       globallivingconditions::my.log.f(paste(Sys.time(),
-                                              "Starting processing",
-                                              length(areas.by.size.classes[[i]]),
-                                              "files in size class", i), "deforestation.log")
-
-       cl <- snow::makeCluster(parallelization.settings[i], type = "SOCK")
-       doParallel::registerDoParallel(cl)
-       snow::clusterExport(cl, c("base.url", "dhs.grid", "values.from.file.f",
-                                 "file.name.prefix", "deforestation.path", 
-                                 "point.at.corners.f", "url.from.point.f", "url.from.file.f",
-                                 "file.name.from.bbox.f", "fetch.raster", "my.years",
-                                 "average.coverage.over.time.directly.from.single.file.fast",
-                                 "temporal.loss.directly.from.possible.multiple.files"))
-
-       ## configure raster, once per node,
-       ## It is not possible to avoid data hitting the disk.
-       ## It does not help the RAM requirements are HUGE (47 GB per node)
-       ## Instead, use this to ensure that parallelization does not trigger
-       ## swaping, so reduce the amount of RAM any single process may use
-       snow::clusterEvalQ(cl, {
-           ## configure raster to prefer RAM
-           library(raster)
-           rasterOptions(
-               memfrac = 0.7, ## Since we have setup the parallelization manually,
-               ## we can be sure all the large areas are processed sequentially,
-               ## and then they can be allowed more RAM than the default 0.6.
-               ## 0.8 failed, unexpected so try 0.7 now.
-               maxmemory = 30 * 1024^3, ## 50 GB
-               chunksize = 5e7, ## 50 MB
-               tmpdir = deforestation.path
-           )           
-       })
-       
-       results <- data.table::rbindlist(foreach::foreach(
-                            j=areas.by.size.classes[[i]],
-                            .packages=c("sp")
-                            ) %dopar% {
-                                                     
-        ## This is the function that will be executed on the nodes
-        my.data.table <- try(
-          temporal.loss.directly.from.possible.multiple.files(j,
-            deforestation.path = deforestation.path), silent = TRUE)
-        if(length(attr(my.data.table, which = "condition")) > 0) {
-           globallivingconditions::my.log.f(paste(Sys.time(),
-             "when constructing `my.means`",
-             "temporal.loss.directly.from.possible... failed on element",
-             j, "in class", i, "with error: '",
-             attr(my.data.table, which = "condition"), "'"),
-            "deforestation.log")
-           return(NULL)
-        }
-        return(my.data.table)
-        })
-       
-       ## Save the result to disk, so we that computations are not wasted if there is an error
-       ## in later iterations
-       saveRDS(results, file = file.name)
-       
-       stopCluster(cl)
-       globallivingconditions::my.log.f(paste(Sys.time(), "Finished processing",
-             "files in size class", i, "about to return an object of class:",
-             class(results)[1]), "deforestation.log")
-       return(results)
-   }, simplify = FALSE))
-
-@
-
-<<single.grid.cell.areas, eval=FALSE>>=
-## The easy ones - areas that share a single grid cell.
-
-globallivingconditions::my.log.f(paste(Sys.time(),
-                                       "Starting processing the",
-                                       length(multiple.areas.one.tiff),
-                                       "easy ones", length(multiple.areas.one.tiff),
-                                       "tifs", unlist(length(multiple.areas.one.tiff)),
-                                       "total areas"), "deforestation.log")
-
-## Since raster is diskbounded, limit the number of threads.
-if(file.exists("/mnt/c")) {
-    ## my laptop
-    n.nodes <- 4
-} else {
-    ## default, suits my server
-    n.nodes <- 6
-    deforestation.path <- paste0("/media/sf_Our_data/Hans/Onedrive/",
-      "University of Gothenburg/Deforestation and",
-      " poverty - Forest coverage/")
-}
-
-cl <- snow::makeCluster(n.nodes, type = "SOCK")
-
-library(doParallel)
-doParallel::registerDoParallel(cl)
-snow::clusterExport(cl, c("base.url", "dhs.grid", "deforestation.path",
-        "point.at.corners.f", "url.from.point.f",
-        "url.from.file.f", "file.name.from.bbox.f", "fetch.raster",
-        "average.coverage.over.time.directly.from.single.file.pointer.fast",
-        "my.years", "n.nodes"))
-
-snow::clusterEvalQ(cl, {
-    ## configure raster to prefer RAM
-    library(raster)
-    if(file.exists("/mnt/c")) {
-        rasterOptions(        
-            ## my laptop
-            memfrac   = 1/(1 + n.nodes),
-            chunksize = 5e6
-        )
-
-        my_canProcessInMemory <- function(x, n = 4, verbose = FALSE) {
-            ## Example: treat operations as if they only needed 2 rasters worth
-            ## raster::canProcessInMemory(x, n = 2, verbose = verbose)
-            return(TRUE)
-        }
-
-        ## Mask it on the search path
-        assign("canProcessInMemory", my_canProcessInMemory, envir = .GlobalEnv)
-        
-    } else {
-        rasterOptions(
-            memfrac   = 1/(1 + n.nodes),
-            chunksize = 5e7
-        )
-    }
-})
-
-easy.ones <- data.table::rbindlist(foreach::foreach(
-            j=1:length(multiple.areas.one.tiff),
-            .packages=c("sp"),
-            .inorder=FALSE
-            ) %dopar% {
-                globallivingconditions::my.log.f(paste(Sys.time(),
-                   "Starting processing tif number",
-                   j,
-                   "with", length(multiple.areas.one.tiff[[j]]),
-                   "total areas"), "deforestation.log")
-                
-                my.data.table <- try(data.table::rbindlist(
-            temporal.loss.for.multiple.areas.from.a.single.grid.cell(
-                multiple.areas.one.tiff[[j]],
-                deforestation.path = deforestation.path)), silent = TRUE)
-           if(length(attr(my.data.table, which = "condition")) > 0) {
-               globallivingconditions::my.log.f(paste(Sys.time(),
-"when constructing `easy.ones`", 
-"temporal.loss.for.multiple.areas.from.a.single.grid.cell... failed on element",
-j, "with error: '", attr(my.data.table, which = "condition"), "'."), "deforestation.log")
-               return(NULL)
-           }
-           return(my.data.table)
-                })
-stopCluster(cl)
-
-@
-
 
 To control for the sampling noise, include the average education in years for the persons that were between 24 and 44 years old in year 2000. This group is stable through the study period (at the end the oldes are 65 years old, still included if alive) We here make use of the fact the education is a stable feature in the sense it can not be lost. It can be improved, but that should be so uncommon that it should not affect the analyses at all. By including this average, the model can ascribe some part of the variation in the outcome over time in the same area to variation in the educational average, which means that the persons surveyed differed, and reduce the problem of sampling noise.
 
