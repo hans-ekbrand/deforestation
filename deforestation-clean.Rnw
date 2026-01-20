@@ -1470,26 +1470,58 @@ st_crs(africa_extent) <- st_crs(sfdf)
 
 <<coverage-t0, fig.cap = "Forest coverage in year 2000. Africa.">>=
 bbox <- st_bbox(
-  c(xmin = -30,
-    ymin = -60,
-    xmax = 30,
-    ymax = 30),
+  c(xmin = -18,
+    ymin = -35,
+    xmax = 52,
+    ymax = 42),
   crs = st_crs(sfdf)
 )
 sel <- st_intersects(sfdf, st_as_sfc(bbox), sparse = FALSE)[,1]
-sel <- st_intersects(sfdf, africa_extent, sparse = FALSE)[,1]
+# sel <- st_intersects(sfdf, africa_extent, sparse = FALSE)[,1]
 sfdf_sub <- sfdf[sel, ]
 
 plot(
   sfdf_sub["coverage.at.t0"],
   breaks = seq(0, 100, length.out = 101),
   pal = function(n) rev(terrain.colors(n)),
-  lwd = 0.1,
+  lwd = 0.05,
   key.pos = 4,      # legend on the right
   key.length = 0.8,
   main = "Forest coverage at year 2000"
 )
 
+@
+
+<<south-america>>=
+bbox_latam <- st_as_sfc(
+    st_bbox(
+  c(
+    xmin = -120,  # western Mexico / Pacific
+    ymin = -60,   # southern Chile / Argentina
+    xmax = -30,   # eastern Brazil
+    ymax =  35    # northern Caribbean
+  ),
+  crs = 4326
+  )
+)
+sel <- st_intersects(sfdf, bbox_latam, sparse = FALSE)[,1]
+sfdf_sub <- sfdf[sel, ]
+plot(
+  sfdf_sub["coverage.at.t0"],
+  breaks = seq(0, 100, length.out = 101),
+  pal = function(n) rev(terrain.colors(n)),
+  lwd = 0.05,
+  key.pos = 4,      # legend on the right
+  key.length = 0.8,
+  main = "Forest coverage at year 2000"
+)
+
+
+@ 
+
+<<eval=FALSE>>=
+library(sp)
+plot(dhs.grid, lwd = 0.05)
 @ 
 
 <<multiple.grid.cell.areas, eval = FALSE>>=
