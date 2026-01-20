@@ -1395,7 +1395,7 @@ setnames(small.multiple.tiles.results, small.multiple.tiles.results.long$variabl
 small.multiple.tiles.results[, region := as.character(region)]
 num_cols <- setdiff(names(small.multiple.tiles.results), "region")
 small.multiple.tiles.results[, (num_cols) := lapply(.SD, as.numeric), .SDcols = num_cols]
-## temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff)
+temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff)
 ## Seems there are one area missing from temporal.loss that exists in the grid.
 ## names(dhs.grid)[which(names(dhs.grid) %in% temporal.loss$region == FALSE)]
 ## [1] "604.Puno.Sandia.Alto Inambari + Limbani + Patambuco"
