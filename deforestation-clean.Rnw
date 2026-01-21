@@ -869,6 +869,9 @@ There are three classes of cases that each need a customized strategy for parall
 Setup a cluster, organise by the required tile. Evaluate «temporal.loss.from.single.file.pointer.f()«, which is basically a wrapper around «average.coverage.over.time.directly.from.single.file.pointer.fast()« but that also creates the needer raster pointers, on all areas that require the same single tile.
 
 <<small.polygons>>=
+if(file.exists("small.polygons.RDS")) {
+    small.areas.means.from.single.tiff <- readRDS("small.polygons.RDS")
+} else {
 library(foreach); library(future); library(doRNG)
 ## n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
 ## plan(multisession, workers = n.cores)
@@ -919,7 +922,8 @@ small.areas.means.from.single.tiff <- data.table::rbindlist(
  my.temp.dt <- data.table::rbindlist(sapply(non.large.polygons[small.areas],
                              temporal.loss.from.single.file.pointer.f, simplify = FALSE))
 })
-    
+}
+
 @
 
 <<large.polygons.aggressive.parallelisation, eval = ! file.exists("my.spdf.RDS")>>=
