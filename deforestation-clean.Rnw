@@ -1003,6 +1003,17 @@ temporal.loss.non.forking.version <- function(
     }
 
     my.raster.stats <- sapply(pieces, inner.function, simplify = FALSE)
+    ## At this point, no more data collection from disk is needed, so clean the
+    ## cache now.
+    raster_tmp <- file.path(tempdir(), "raster")
+
+    if (dir.exists(raster_tmp)) {
+        globallivingconditions::my.log.f(
+         paste(Sys.time(), "Cleaning the temp-dir/raster used for index", index), 
+         "deforestation.log") 
+        
+        unlink(raster_tmp, recursive = TRUE, force = TRUE)
+    }
     
     ## If any element is NULL remove it
     ## (This probably only happened due to a bug in file.name.from.bbox.f
