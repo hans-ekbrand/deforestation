@@ -38,6 +38,10 @@ install_bitbucket(repo = "hansekbrand/DHSharmonisation", upgrade = "never", ref 
 <<load.data.using.child.document, child=system.file("dhs-debug-child.Rnw", package="globallivingconditions"), eval = ! file.exists("final.RDS")>>=
 @ 
 
+
+\section{Aim}
+This document serves as the canonical source for information about a database of forest coverage and forest loss between year 2000 and 2023 in Latin America, Africa and South Asia. The database can be reconstructed from scratch by following the instructions laid out in this document. If you only want to \emph{use} the database, then skip to the section \vref{endusers}.
+
 \section{Requirements}
 The program downloads almost all of the necessary data from the internet, but data from the World Bank is currently read from local files, so the path to these needs to be set in the variable \texttt{country.data.path} which should be a path to the \emph{directory} where the following files reside:
 
@@ -54,6 +58,8 @@ Define paths.
 country.data.path <- paste0("~/annex/projekt/",
       "global-living-conditions/stora-eller-statiska-filer/",
       "deforestation/Country data/")
+africa.map.path <- paste0("~/annex/projekt/child-poverty/",
+                          "statiska-eller-stora-filer/")
 if(file.exists("/mnt/c")) {
     deforestation.path <- paste0("/mnt/c/Users/xekbha/",
       "University of Gothenburg/Deforestation and",
@@ -63,8 +69,6 @@ if(file.exists("/media/sf_Our_data")) {
     deforestation.path <- paste0("/media/sf_Our_data/Hans/Onedrive/",
       "University of Gothenburg/Deforestation and",
       " poverty - Forest coverage/")
-    africa.map.path <- paste0("~/annex/projekt/child-poverty/",
-                              "statiska-eller-stora-filer/")
 }
 if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
     deforestation.path <- paste0("/mimer/NOBACKUP/groups/",
@@ -1069,11 +1073,41 @@ temporal.loss.non.forking.version <- function(
 
 library(foreach); library(future); library(doRNG); library(future.apply)
 n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
+if(file.exists("/mnt/c")){
+    n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
+    ## which in turn makes the unresponsive if I use more cores than this.
+}
 globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
           "deforestation.log")
 plan(multisession, workers = n.cores)
 my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE)
 
+@
+
+<<make.my.means.a.data.table, echo = FALSE, eval = ! file.exists("my.spdf.RDS")>>=
+## recover a useful structure for the data of my.means. I forgot "simplify = FALSE" in future_sapply(), so have to fix that now.
+# ensure it's a matrix-like object
+mat <- as.matrix(my.means)   # uses existing dim / dimnames
+
+# defensive check (will stop with informative message if shape unexpected)
+if (nrow(mat) != length(attr(mat, "dimnames")[[1]])) {
+  stop("Unexpected shape: number of rows doesn't match length of dimnames[[1]]")
+}
+
+# build list of one-row data.tables (column j -> one-row DT)
+dt_list <- lapply(seq_len(ncol(mat)), function(j) {
+  vals <- mat[, j]                             # named vector of length 26
+  names(vals) <- attr(mat, "dimnames")[[1]]    # ensure names come from dimnames[[1]]
+  # convert types sensibly (numbers -> numeric, "NA" -> NA, keep strings)
+  vals_list <- type.convert(as.list(vals), as.is = TRUE)
+  as.data.table(vals_list)                     # single-row data.table
+})
+
+# optional: attach original column index/name as an id when binding
+combined <- rbindlist(dt_list, use.names = TRUE, fill = TRUE, idcol = "orig_col")
+combined[ , orig_col := NULL, ]
+my.means <- combined
+large.polygons.results <- my.means
 @ 
 
 Remaining ones are small and requires more than one tile. Just apply temporal.loss.directly.from.possible.multiple.files on all of them.
@@ -1089,39 +1123,43 @@ small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.re
 
 @
 
+<<make.small.multiple.tiles.data.table, echo = FALSE, eval = ! file.exists("my.spdf.RDS")>>=
+## same thing goes for small.multiple.tiles
+mat <- as.matrix(small.multiple.tiles)   # uses existing dim / dimnames
+
+# defensive check (will stop with informative message if shape unexpected)
+if (nrow(mat) != length(attr(mat, "dimnames")[[1]])) {
+  stop("Unexpected shape: number of rows doesn't match length of dimnames[[1]]")
+}
+
+# build list of one-row data.tables (column j -> one-row DT)
+dt_list <- lapply(seq_len(ncol(mat)), function(j) {
+  vals <- mat[, j]                             # named vector of length 26
+  names(vals) <- attr(mat, "dimnames")[[1]]    # ensure names come from dimnames[[1]]
+  # convert types sensibly (numbers -> numeric, "NA" -> NA, keep strings)
+  vals_list <- type.convert(as.list(vals), as.is = TRUE)
+  as.data.table(vals_list)                     # single-row data.table
+})
+
+# optional: attach original column index/name as an id when binding
+combined <- rbindlist(dt_list, use.names = TRUE, fill = TRUE, idcol = "orig_col")
+combined[ , orig_col := NULL, ]
+small.multiple.tiles.results <- combined
+
+@ 
+
 Stitch together the three pieces. Apparently, the `size` column in `small.areas.means.from.single.tiff` is wrongly called ``V2'', fix that in a way that is robust to the fact that other columns in the data set has the name ``V2''.
 
-<<stitch, eval = ! file.exists("my.spdf.RDS")>>=
-large.polygons.results <- rbindlist(my.means)
-colnames(small.areas.means.from.single.tiff)[2] <- "size"
-small.multiple.tiles.results.long <- as.data.table(small.multiple.tiles, keep.rownames = "variable")
-small.multiple.tiles.results <- transpose(small.multiple.tiles.results.long[, -"variable"])
-setnames(small.multiple.tiles.results, small.multiple.tiles.results.long$variable)
-# fix types
-small.multiple.tiles.results[, region := as.character(region)]
-num_cols <- setdiff(names(small.multiple.tiles.results), "region")
-small.multiple.tiles.results[, (num_cols) := lapply(.SD, as.numeric), .SDcols = num_cols]
-temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff)
-## Seems there are one area missing from temporal.loss that exists in the grid.
-## names(dhs.grid)[which(names(dhs.grid) %in% temporal.loss$region == FALSE)]
-## [1] "604.Puno.Sandia.Alto Inambari + Limbani + Patambuco"
-## Inspecting this polygon, it seems it has a ring in it.
-## but the size operation did no fail on it: 
-## geosphere::areaPolygon(dhs.grid[which(names(dhs.grid) %in% temporal.loss$region == FALSE)])
-## [1] 4255869610
-## This area was one of the large polygons
-## 13029 %in% unlist(large.polygons)
-## [1] TRUE
-## > 13029 %in% non.large.polygons[unlist(multiple.tiff.requirements)]
-## [1] FALSE
-## > 13029 %in% non.large.polygons[unlist(single.tiff.requirements)]
-## [1] FALSE
-## grep 13029 deforestation.log
-## 2026-01-18 23:37:47 in temporal.loss.non.forking.version() working with index = 13029 region name: 604.Puno.Sandia.Alto Inambari + Limbani + Patambuco polygon too small: 4256 Km^2 should be at least 5 000 Km^2
-## So it was skipped because it wasn't large enough after all.
+<<stitch>>=
+if(file.exists("my.spdf.RDS")) {
+    spdf <- readRDS("my.spdf.RDS")
+    sfdf <- readRDS("my.sfdf.RDS")
+    temporal.loss <- readRDS("temporal.loss.RDS")
+} else {
 
-missing.piece <- temporal.loss.directly.from.possible.multiple.files(which(names(dhs.grid) %in% temporal.loss$region == FALSE), deforestation.path = deforestation.path)
-temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff, missing.piece)
+colnames(small.areas.means.from.single.tiff)[2] <- "size"
+
+temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff)
 
 ## create a SPDF object, with one layer for each year.
 library(data.table)
@@ -1167,27 +1205,28 @@ sfdf <- st_as_sf(spdf)
 
 saveRDS(spdf, file = "my.spdf.RDS")
 saveRDS(sfdf, file = "my.sfdf.RDS")
-saveRDS(temporal.loss, file = "temporal.loss.RDS")
+    saveRDS(temporal.loss, file = "temporal.loss.RDS")
+    }
 
 @
 
 <<load.afria.map>>=
-load(paste0(africa.map.path, "~/annex/projekt/global-living-conditions/",
-             "stora-eller-statiska-filer/africa-lowres.RData")) ## "africa"
-africa_extent <- st_as_sf(africa)
+library(sf)
+load(paste0(africa.map.path, "africa-lowres.RData")) ## "africa.mainland" and "madagascar"
+africa_extent <- rbind(st_as_sf(africa.mainland), st_as_sf(madagascar))
 st_crs(africa_extent) <- st_crs(sfdf)
 
 @ 
 
-<<coverage-t0, fig.cap = "Forest coverage in year 2000. Africa.", fig.width=6.45, fig.height=6.45>>=
-## Select polygon that intersects with the polygons mainland africa and Madagascar
+<<coverage-t0, fig.cap = "Forest coverage per local area in year 2000. Africa. Only countries with DHS data included.", fig.width=6.45, fig.height=6.45>>=
+## Select polygons that intersects with the polygons mainland africa and Madagascar
 ## africa_extent is a single object but contains two polygons, which makes sel 
 ## have 2 columns
 sel <- st_intersects(sfdf, africa_extent, sparse = FALSE)
 these.polygons.in.africa <- which(apply(sel, 1, any))
 
 plot(
-  sfdf_sub[these.polygons.in.africa, "coverage.at.t0"],
+  sfdf[these.polygons.in.africa, "coverage.at.t0"],
   breaks = seq(0, 100, length.out = 101),
   pal = function(n) rev(terrain.colors(n)),
   lwd = 0.05,
@@ -1200,37 +1239,221 @@ plot(st_geometry(africa_extent), add = TRUE)
 
 @
 
-<<south-america>>=
-borders.temp <- sapply(paste0(gis.path, iso.3166$String.code[match(country.codes.map[country.codes.map$m49 == "Latin America and the Caribbean", "UN"], iso.3166$numeric)], "_adm0.rds"), function(x) { if(file.exists(x)) { st_as_sf(readRDS(x)) } })
-## Remove NULL elements (countries in country.codes.map, for which there were no gadm file).
+<<get.more.borders.select.south.america>>=
+library(sf)
 
-borders <- Filter(Negate(is.null), borders.temp)
+gis.path.sf <- "/mnt/c/Users/xekbha/University of Gothenburg/Deforestation and poverty - DHS/GIS-borders-SF/"
+dir.create(gis.path.sf, showWarnings = FALSE, recursive = TRUE)
 
-bbox_latam <- st_as_sfc(
-    st_bbox(
-  c(
-    xmin = -120,  # western Mexico / Pacific
-    ymin = -60,   # southern Chile / Argentina
-    xmax = -30,   # eastern Brazil
-    ymax =  35    # northern Caribbean
-  ),
-  crs = 4326
-  )
+library(globallivingconditions) ## iso.3166 and my.log.f()
+
+m49 <- read.csv("~/src/dhsharmonisation/inst/M49.csv")
+south.america.letter.codes.tmp <- m49$ISO.alpha3.Code[which(m49$Sub.region.Name == "Latin America and the Caribbean")]
+## Discard some small islands.
+small.islands <- c("AIA", "ATG", "ABW", "BHS", "BRB", "BES", "VGB", "CYM", "CUW", "DMA", "GLP", "MTQ", "MSR", "BLM", "KNA", "LCA", "MAF", "VCT", "SXM", "TCA", "VIR", "BVT", "FLK", "SGS")
+south.america.letter.codes <- south.america.letter.codes.tmp[south.america.letter.codes.tmp %in% small.islands == FALSE]
+
+## gadm uses the letter codes, but globallivingconditions uses the digit codes.
+## Not all entities are proper countries, so use na.omit to filter out those not existing in iso.3166
+south.america.numeric.codes <- as.vector(na.omit(iso.3166$numeric[match(south.america.letter.codes, iso.3166$String.code)]))
+
+## make sure all borders exists
+
+my.borders.inner.f <- function(code, gis.path.sf, absolute.log.filename, level) {
+    ## code is the three letter code.
+    ## While only the geometry corresponding to level 0 will be returned,
+    ## the other levels, if they exist, will be saved to disk.
+
+    my.log.f(paste(Sys.time(), "my.borders.inner.f called with argument", code), absolute.log.filename)
+    ## if the file does not exists, then download it
+
+    base.uri.for.gadm <- "https://geodata.ucdavis.edu/gadm/gadm4.1/json/"
+
+    ## Start with level == 0
+    ## code is the three letter code, eg. "ARG" for Argentine
+    target.filename.base <- paste0("gadm41_", code, "_", 0)
+    url.file <- paste0(target.filename.base, ".json")
+    disk.file <- paste0(target.filename.base, ".rds")
+    
+    if(file.exists(paste0(gis.path.sf, disk.file)) == FALSE) {
+        ## Look for an indication that this file does not exist at all.
+        if(file.exists(paste0(gis.path.sf, disk.file, "does.not.exist"))) {
+            ## No level zero file exists at all
+            return(NULL)
+        }
+        my.error <- try(my.sf.df <- st_read(paste0(base.uri.for.gadm, url.file), quiet = TRUE), silent = TRUE)
+        if(length(attr(my.error, which = "condition")) > 0) {
+            my.log.f(paste(Sys.time(), "no level", 0, "file for", code, "at", paste0(base.uri.for.gadm, url.file),
+                           "sleeping to avoid bandwidth limiting measures"), absolute.log.filename)
+
+            ## Make a local note of this.
+            file.create(paste0(gis.path.sf, disk.file, "does.not.exist"))
+
+            ## This was level 0, since it did no exist, just return NULL directly.
+            return(NULL)
+            
+        } else {
+            my.log.f(paste(Sys.time(), "border successfully downloaded for level 0", code), absolute.log.filename)
+            saveRDS(my.sf.df, file = paste0(gis.path.sf, disk.file))
+        }
+    } else {
+        my.log.f(paste(Sys.time(), "border exists locally for level 0", code), absolute.log.filename)
+        my.sf.df <- readRDS(paste0(gis.path.sf, disk.file))
+    }
+    number.of.tries <- 0
+    success <- FALSE
+    while(level > 0) {
+        target.filename.base <- paste0("gadm41_", code, "_", level)
+        url.file <- paste0(target.filename.base, ".json")
+        disk.file <- paste0(target.filename.base, ".rds")
+        if(! file.exists(paste0(gis.path.sf, disk.file))) {
+            if(file.exists(paste0(gis.path.sf, disk.file, "does.not.exist"))) {
+                level <- level - 1
+                next
+            }
+            number.of.tries <- number.of.tries + 1
+            my.error <- try(my.sf.df.subnational <- st_read(paste0(base.uri.for.gadm, url.file), quiet = TRUE), silent = TRUE)
+            if(length(attr(my.error, which = "condition")) > 0) {
+                if(success) {
+                    ## File is there, try this level again, unless we have already tried the max number of times
+                    my.log.f(paste(Sys.time(), "download failed at try number", number.of.tries,
+                              "for this URI: ", paste0(base.uri.for.gadm, code, "_", level, "_sp.rds"),
+                              "sleeping ", 61 * number.of.tries, "seconds"), absolute.log.filename)
+
+                    ## biogeo.ucdavis.edu is unfortunately not reliable, 
+                    ## increase the probability of getting a file by sleeping an increasing time for each attempt
+                    Sys.sleep(1 * number.of.tries)
+                    
+                    if(number.of.tries >= 3) {
+                        ## Give up on this one
+                        file.create(paste0(gis.path.sf, disk.file, "does.not.exist"))
+                        level <- level - 1
+                    }
+                } else {
+                    my.log.f(paste(Sys.time(), "no level", level, "file for", code, "at",
+                                   paste0(base.uri.for.gadm, url.file)), absolute.log.filename)
+                    ## Don't try this level again
+                    file.create(paste0(gis.path.sf, disk.file, "does.not.exist"))
+                    level <- level - 1
+                }
+            } else {
+                success <- TRUE
+                my.log.f(paste(Sys.time(), "border successfully downloaded for level", level, code), absolute.log.filename)
+                saveRDS(my.sf.df.subnational, file = paste0(gis.path.sf, disk.file))
+                ## Good, move on to next level
+                level <- level - 1
+            }
+        } else {
+            success <- TRUE            
+            my.log.f(paste(Sys.time(), "border exists locally for level", level, code), absolute.log.filename)
+            ## Good, move on to next level
+            level <- level - 1
+        }
+    }
+    return(my.sf.df)
+}
+
+my.log.f(paste(Sys.time(), "Starting looking for more borders"), "deforestation.log")
+
+## Do not flood the gadm server with requests, run this sequentially
+borders.with.GPS <- sapply(south.america.letter.codes, function(x) {
+    my.borders.inner.f(x, gis.path.sf, absolute.log.filename = "deforestation.log", level = 3)
+}, simplify = FALSE)
+names(borders.with.GPS) <- south.america.numeric.codes
+
+my.log.f(paste(Sys.time(), "Borders collected"), "deforestation.log")
+
+## make a single sf object
+south.america.border <- Reduce(rbind, borders.with.GPS)
+
+my.log.f(paste(Sys.time(), "Reduced to a single sf object"), "deforestation.log")
+
+## Take the union, avoid errors
+sf_use_s2(FALSE)
+south.america.union <- st_union(south.america.border)
+
+my.log.f(paste(Sys.time(), "Union created"), "deforestation.log")
+
+these.polygons.are.in.south.america <- st_intersects(sfdf, south.america.union, sparse = FALSE)[,1]
+my.log.f(paste(Sys.time(), "Selection created created"), "deforestation.log")
+
+@
+
+<<coverage-t0-south-america, fig.cap = "Forest coverage per local area in year 2000. Latin America and the Caribbean. Only areas with DHS data included.", fig.width=6.45, fig.height=6.45>>=
+
+# plot the big outline first (no fill)
+plot(st_geometry(south.america.union),
+     col = NA,          # no fill
+     border = "black",  # outline color
+     lwd = 1.0,
+     main = "Forest coverage at year 2000",
+     reset = FALSE
 )
-sel <- st_intersects(sfdf, bbox_latam, sparse = FALSE)[,1]
-sfdf_sub <- sfdf[sel, ]
 
-
-plot(
-  sfdf_sub["coverage.at.t0"],
-  breaks = seq(0, 100, length.out = 101),
-  pal = function(n) rev(terrain.colors(n)),
-  lwd = 0.05,
-  key.pos = 4,      # legend on the right
-  key.length = 0.8,
-  main = "Forest coverage at year 2000"
+# then add the coverage layer
+plot(sfdf[these.polygons.are.in.south.america, "coverage.at.t0"],
+     breaks = seq(0, 100, length.out = 101),
+     pal = function(n) rev(terrain.colors(n)),
+     lwd = 0.05,
+     add = TRUE,
+     key.pos = 4,
+     key.length = 0.8
 )
 
+@
+
+<<south.east.asia.prepare>>=
+library(globallivingconditions) ## iso.3166 and my.log.f()
+south.east.asia.letter.codes <- m49$ISO.alpha3.Code[m49$Sub.region.Name %in% c("Southern Asia", "South-eastern Asia")]
+
+## gadm uses the letter codes, but globallivingconditions uses the digit codes.
+## Not all entities are proper countries, so use na.omit to filter out those not existing in iso.3166
+south.east.asia.numeric.codes <- as.vector(na.omit(iso.3166$numeric[match(south.east.asia.letter.codes, iso.3166$String.code)]))
+
+## Do not flood the gadm server with requests, run this sequentially
+borders.with.GPS <- sapply(south.east.asia.letter.codes, function(x) {
+    my.borders.inner.f(x, gis.path.sf, absolute.log.filename = "deforestation.log", level = 3)
+}, simplify = FALSE)
+names(borders.with.GPS) <- south.america.numeric.codes
+
+my.log.f(paste(Sys.time(), "Borders collected"), "deforestation.log")
+
+## make a single sf object
+south.east.asia.border <- Reduce(rbind, borders.with.GPS)
+
+my.log.f(paste(Sys.time(), "Reduced to a single sf object"), "deforestation.log")
+
+## Take the union, avoid errors
+sf_use_s2(FALSE)
+south.east.asia.union <- st_union(south.east.asia.border)
+
+my.log.f(paste(Sys.time(), "Union created"), "deforestation.log")
+
+these.polygons.are.in.south.east.asia <- st_intersects(sfdf, south.east.asia.union, sparse = FALSE)[,1]
+my.log.f(paste(Sys.time(), "Selection created created"), "deforestation.log")
+
+@
+
+<<coverage-t0-south-east-asia, fig.cap = "Forest coverage per local area in year 2000. South East Asia. Only areas with DHS data included.", fig.width=6.45, fig.height=6.45>>=
+
+# plot the big outline first (no fill)
+plot(st_geometry(south.east.asia.union),
+     col = NA,          # no fill
+     border = "black",  # outline color
+     lwd = 1.0,
+     main = "Forest coverage at year 2000",
+     reset = FALSE
+)
+
+# then add the coverage layer
+plot(sfdf[these.polygons.are.in.south.east.asia, "coverage.at.t0"],
+     breaks = seq(0, 100, length.out = 101),
+     pal = function(n) rev(terrain.colors(n)),
+     lwd = 0.05,
+     add = TRUE,
+     key.pos = 4,
+     key.length = 0.8
+)
 
 @ 
 
@@ -1241,23 +1464,16 @@ plot(dhs.grid, lwd = 0.05)
 
 To control for the sampling noise, include the average education in years for the persons that were between 24 and 44 years old in year 2000. This group is stable through the study period (at the end the oldes are 65 years old, still included if alive) We here make use of the fact the education is a stable feature in the sense it can not be lost. It can be improved, but that should be so uncommon that it should not affect the analyses at all. By including this average, the model can ascribe some part of the variation in the outcome over time in the same area to variation in the educational average, which means that the persons surveyed differed, and reduce the problem of sampling noise.
 
-Angola (2015 + 2011 (MIS) 2006-7 (MIS), Madagascar (2021, 2008-2009, 2003-2004 (no gis), 1997), South Africa (1998, 2016), Burundi (2010, 2016-17), Congo (2005, 2011-12), Congo Democratic Republic (2007, 2013-14), Gabon (2000, 2012, 2019-2021), Cote d'Ivoire (2021, 2011-12, 2005), Chad (2004 (no gis), 2014-15), Tanzania (1999, 2004-5, 2010, 2015-16, 2022), Morocco (not enough data), Egypt (2000, 2005, 2008, 2014).
+Merge the results with the DHS data on living conditions.
 
-Merge the results from DHS with the forestation state at year 2000 (as classification into classes of less than 5, 10 , 20, 40 and 100 per cent) and the loss at the year of the interview.
-
-<<merge.results, dependson = "continued.country">>=
+<<merge.results>>=
 library(data.table)
-temporal.loss <- rbind(easy.ones, my.means)
-names(temporal.loss)[match("region", names(temporal.loss))] <- "superClusterID"
-my.dt <- get(load(file = "living-conditions.RData"))
+my.dt <- readRDS("reduced.RDS")
+## Rename column "region" to "superClusterID" in temporal loss
+colnames(temporal.loss)[match("region", colnames(temporal.loss))] <- "superClusterID"
 data.table::setkey(my.dt, superClusterID)
 data.table::setkey(temporal.loss, superClusterID)
 my.dt.with.temporal.loss <- merge(my.dt, temporal.loss)
-
-## add forest class
-my.dt.with.temporal.loss[, forest.class := cut(coverage.at.t0, 
-                               breaks = c(0, 5, 10, 20, 40, 100),
-                               include.lowest = TRUE), ]
 
 ## add loss at year of interview
 my.dt.with.temporal.loss$loss.at.year.of.interview = NA
@@ -1270,7 +1486,6 @@ for(t in my.years) {
     my.dt.with.temporal.loss$loss.at.year.of.interview[these.cases] <-
         foo[[this.column.name]]
 }
-
 
 dep.subset.f <- function(var.name) {
     ## To control for the sampling noise, include the average education 
@@ -1312,8 +1527,7 @@ dep.subset.f <- function(var.name) {
     ## only measured on children below 5 and education is only
     ## calculate for adults above 23.
     these <- which(is.na(my.dt.with.temporal.loss[[var.name]]) == FALSE &
-     is.na(my.dt.with.temporal.loss$loss.at.year.of.interview) == FALSE
-                   )
+     is.na(my.dt.with.temporal.loss$loss.at.year.of.interview) == FALSE)
 
     ## if data collection happened over two different years, then there
     ## are two separate lines. Merge these and take the mean year.
@@ -1326,8 +1540,7 @@ dep.subset.f <- function(var.name) {
         not.deprived = sum(.N) - sum(length(which(dep.var))),
         country = unique(globallivingconditions::iso.3166$String[
                      match(country.code.ISO.3166.alpha.3,
-                           globallivingconditions::iso.3166$numeric)]),
-        forest.class = unique(forest.class)),
+                           globallivingconditions::iso.3166$numeric)])),
         by = list(superClusterID, source)]
     
     output.dt[, year := scale(raw.year), ]
@@ -1348,54 +1561,24 @@ dep.subset.f <- function(var.name) {
     output.dt.2$superClusterID <- factor(output.dt.2$superClusterID)
 
     ## If some region where present in foo, but not in output.dt.2,
-    ## explain why.
-    
+    ## make a note in the log with these regions.
     if(length(output.dt.2[is.na(
         average.years.of.education.for.the.1956.1976.cohort) == FALSE,
         unique(superClusterID), ]) < length(unique(foo$superClusterID))) {
+
         these <- which(is.na(match(unique(foo$superClusterID),
                                    output.dt.2[is.na(
             average.years.of.education.for.the.1956.1976.cohort) == FALSE,
             unique(superClusterID), ])))
-        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions",
-               "lacked enough data on education for the cohort: ",
-               paste(unique(foo$superClusterID)[these], collapse = ", ")),
-               "deforestation.log")
-        save(foo, file = "foo.RData")
-    }
-    if(length(my.dt.with.temporal.loss[is.na(dep.var) == FALSE,
-           unique(superClusterID), ]) < length(unique(
-                    my.dt.with.temporal.loss$superClusterID))) {
-        these <- which(is.na(match(unique(
-            ## output.dt.2 is aggregated data base on non-missing cases.
-            ## it does not make sense to use filter for non.mossing dep
-            ## .var here.
-            ## my.dt.with.temporal.loss$superClusterID), output.dt.2[is.na(
-            ##              dep.var) == FALSE, unique(superClusterID), ])))
-            my.dt.with.temporal.loss$superClusterID), output.dt.2[,
-                                               unique(superClusterID), ])))
-            
-        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions",
-               "lacked enough data on deprivation: ", paste(unique(unique(
-      my.dt.with.temporal.loss$superClusterID)[these], collapse = ", "))),
-               "deforestation.log")
-        save(foo, file = "foo.RData")
-    }
-    if(length(my.dt.with.temporal.loss[is.na(loss.at.year.of.interview)
-         == FALSE, unique(superClusterID), ]) < length(unique(
-                            my.dt.with.temporal.loss$superClusterID))) {
-        these <- which(is.na(match(unique(
-            my.dt.with.temporal.loss$superClusterID), output.dt.2[is.na(
-       loss.at.year.of.interview) == FALSE, unique(superClusterID), ])))
-        globallivingconditions::my.log.f(paste(Sys.time(), "Some regions",
-  "lacked enough data on loss.at.year.of.interview: ", paste(unique(unique(
-       my.dt.with.temporal.loss$superClusterID)[these], collapse = ", "))),
-  "deforestation.log")
-        save(foo, file = "foo.RData")
-    }
 
+        ## my.log.f(paste(Sys.time(), "Some regions lacked enough data on",
+        ##                "education for the cohort"), "deforestation.log")
+        ## my.log.f(paste(foo$superClusterID[these], collapse = " "),
+        ##          "deforestation.log")
+    }
     return(output.dt.2)
 }
+
 my.deps <- c("severe.shelter.deprivation", "severe.water.deprivation",
              "severe.food.deprivation", "severe.sanitation.deprivation")
 data.sets <- sapply(my.deps, dep.subset.f, simplify = FALSE)
@@ -1417,7 +1600,7 @@ test.dt <- data.sets[[match("severe.shelter.deprivation", my.deps)]]
 \subsection{Coverage for shelter}
 Show the areas for which we have complete data for shelter deprivation, and mark areas where education is missing and where there are too few measurements.
 
-<<coverage-shelter, fig.cap = "Coverage for education in the shelter deprivation dataset. Green = multiple measurements available, Red = a single measurement available, White = no measurement available.", dev = "png", dpi = 200>>=
+<<coverage-shelter, fig.cap = "Coverage for education in the shelter deprivation dataset. Green = multiple measurements available, Red = a single measurement available, White = no measurement available.", dev = "png", dpi = 200, eval = FALSE>>=
 plot(africa)
 missing.stats <- test.dt[is.na(
     average.years.of.education.for.the.1956.1976.cohort) == FALSE,
@@ -1438,14 +1621,16 @@ Table \vref{tab:data} provides an excerpt from the data set that includes data o
 
 <<continued.excerpt, echo = FALSE, results = "asis">>=
 library(data.table)
-foo <- test.dt[, c("coverage.at.t0", "loss.at.year.of.interview", "GDP", "year", "superClusterID", "average.years.of.education.for.the.1956.1976.raw", "deprived", "not.deprived")]
+set.seed(1)
+these <- sample(unique(test.dt$superClusterID), size = 3)
+foo <- test.dt[superClusterID %in% these, c("coverage.at.t0", "loss.at.year.of.interview", "GDP", "year", "superClusterID", "average.years.of.education.for.the.1956.1976.raw", "deprived", "not.deprived")]
 foo[, prop.deprived := deprived/(deprived + not.deprived), ]
 setkey(foo, superClusterID, year)
 colnames(foo) <- c("FC.T0", "DF", "GDP", "year", "area", "EduY", "D.",
                    "Non D.", "p.D.")
 foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
 library(xtable)
-print(xtable(foo, digits = c(0, 1, 2, 0, rep(0, 2), 2, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Forest Coverage at T0 ('FC.T0'), Deforestation ('DF'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), and Not.Deprived ('Non D.').", align = c(rep("r", 5), "p{4cm}", rep("r", 4))), include.rownames = FALSE, tabular.environment = "longtable", floating = FALSE)
+print(xtable(foo, digits = c(0, 1, 2, 0, rep(0, 2), 2, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Forest Coverage at T0 ('FC.T0'), Deforestation ('DF'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), Not.Deprived ('Not D.') and Proportion deprived ('p.D.').", align = c(rep("r", 5), "p{4.5cm}", rep("r", 4))), include.rownames = FALSE, tabular.environment = "longtable", floating = FALSE)
 @ 
 
 Fit models
