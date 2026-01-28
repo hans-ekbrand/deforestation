@@ -1703,9 +1703,241 @@ fit_g4 <- gamm4(
 
 <<non.dhs.countries>>=
 africa.non.dhs <- c("Algeria", "Tunisia", "Libya", "Congo", "Botswana", "Lesotho", "Guinea-Bissau", "Equatorial Guinea", "Western Sahara", "Sudan", "South Sudan", "Eritrea", "Djibouti", "Somalia")
+south.america.non.dhs <- c("Brazil", "Argentina", "Chile", "Uruguay", "Paraguay", "Venezuela (Bolivarian Republic of)", "Ecuador", "Panama", "Costa Rica", "Nicaragua", "Belize", "Mexico", "Cuba", "Jamaica")
 
-south.america.non.dhs <- c("Brazil", "Argentina", "Chile", "Urugay", "Paraguay", "Venezuela", "Ecuador", "Panama", "Costa Rica", "Nicaragua", "Belize", "Mexico", "Cuba", "Jamaica")
+south.asia.non.dhs <- c("Iran (Islamic Republic of)", "Lao People's Democratic Republic", "Viet Nam", "Thailand", "Papua New Guinea", "Sri Lanka")
 
+letter.code.from.name <- function(name) {
+    globallivingconditions::iso.3166$String.code[match(name,
+                    globallivingconditions::iso.3166$String)]
+}
+
+non.dhs.african.borders <- sapply(africa.non.dhs, function(x) {
+    my.borders.inner.f(letter.code.from.name(x), gis.path.sf, absolute.log.filename = "deforestation.log", level = 3)
+}, simplify = FALSE)
+names(non.dhs.african.borders) <- sapply(africa.non.dhs, code.from.name)
+## Load the administrative areas, pick the finest resolution there is available
+africa.non.dhs.sf <- Reduce(rbind, sapply(africa.non.dhs, function(country.name) {
+    this.file <- sort(list.files(path = gis.path.sf,
+      pattern = paste0("gadm41_", letter.code.from.name(country.name), "_.*.rds$")),
+      decreasing = TRUE)[1]
+    tmp <- readRDS(paste0(gis.path.sf, this.file))
+    ## Standardize the column structure.
+    ## Standardize by keep only a single column, "region",
+    ## based on the highest available level
+    target.colum.name <- paste0("GID_", length(grep("GID_", colnames(tmp))) - 1)
+    tmp$region <- tmp[[target.colum.name]]
+    keep.these <- c("region", "geometry")
+    for(column in colnames(tmp)){
+        if(! column %in% keep.these) {
+            tmp[[column]] <- NULL
+        }
+    }
+    tmp
+}, simplify = FALSE))
+
+non.dhs.south.american.borders <- sapply(south.america.non.dhs, function(x) {
+    my.borders.inner.f(letter.code.from.name(x), gis.path.sf, absolute.log.filename = "deforestation.log", level = 3)
+}, simplify = FALSE)
+names(non.dhs.south.american.borders) <- sapply(south.america.non.dhs, code.from.name)
+## Load the administrative areas, pick the finest resolution there is available
+south.america.non.dhs.sf <- Reduce(rbind, sapply(south.america.non.dhs, function(country.name) {
+    this.file <- sort(list.files(path = gis.path.sf,
+      pattern = paste0("gadm41_", letter.code.from.name(country.name), "_.*.rds$")),
+      decreasing = TRUE)[1]
+    tmp <- readRDS(paste0(gis.path.sf, this.file))
+    ## Standardize the column structure.
+    ## Standardize by keep only a single column, "region",
+    ## based on the highest available level
+    target.colum.name <- paste0("GID_", length(grep("GID_", colnames(tmp))) - 1)
+    tmp$region <- tmp[[target.colum.name]]
+    keep.these <- c("region", "geometry")
+    for(column in colnames(tmp)){
+        if(! column %in% keep.these) {
+            tmp[[column]] <- NULL
+        }
+    }
+    tmp
+}, simplify = FALSE))
+
+non.dhs.south.asian.borders <- sapply(south.asia.non.dhs, function(x) {
+    my.borders.inner.f(letter.code.from.name(x), gis.path.sf, absolute.log.filename = "deforestation.log", level = 3)
+}, simplify = FALSE)
+names(non.dhs.south.asian.borders) <- sapply(south.asia.non.dhs, code.from.name)
+## Load the administrative areas, pick the finest resolution there is available
+south.asia.non.dhs.sf <- Reduce(rbind, sapply(south.asia.non.dhs, function(country.name) {
+    if(country.name %in% c("Thailand", "Viet Nam")) {
+        ## This construct will use level 1 (both of these countries have 3 levels,
+        ## 3:1[3] will give level 1
+        index <- 3
+    } else {
+        ## Use lowest level by default
+        index <- 1
+    }
+    this.file <- sort(list.files(path = gis.path.sf,
+      pattern = paste0("gadm41_", letter.code.from.name(country.name), "_.*.rds$")),
+      decreasing = TRUE)[index]
+    ## Some exceptions: Use level 1 for Thailand and Viet Nam
+    tmp <- readRDS(paste0(gis.path.sf, this.file))
+    ## Standardize the column structure.
+    ## Standardize by keep only a single column, "region",
+    ## based on the highest available level
+    target.colum.name <- paste0("GID_", length(grep("GID_", colnames(tmp))) - 1)
+    tmp$region <- tmp[[target.colum.name]]
+    keep.these <- c("region", "geometry")
+    for(column in colnames(tmp)){
+        if(! column %in% keep.these) {
+            tmp[[column]] <- NULL
+        }
+    }
+    tmp
+}, simplify = FALSE))
+
+dhs.grid.sf <- st_as_sf(dhs.grid)
+dhs.grid.sf$region <- names(dhs.grid)
+full.grid.sf <- Reduce(rbind, list(dhs.grid.sf, south.america.non.dhs.sf, africa.non.dhs.sf, south.asia.non.dhs.sf))
+
+my.log.f(paste(Sys.time(), "Borders collected"), "deforestation.log")
+
+@
+
+<<task.creation.2>>=
+n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
+plan(sequential)
+plan(multisession, workers = n.cores)
+
+area.sizes <- future_sapply(seq_len(nrow(full.grid.sf)), function(i) {
+    sf_use_s2(FALSE)
+    as.numeric(st_area(full.grid.sf[i, ]))
+}, future.seed=TRUE)
+
+large.polygons <- which(area.sizes > 5e9)
+
+## For all small regions, derive the necessary grid cells.
+non.large.polygons <- (1:length(dhs.grid))[-large.polygons]
+files.required <- future_sapply(non.large.polygons, function(i) {
+    file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]),
+                          layer="treecover2000")
+}, future.seed=TRUE)
+
+files.required.string <- sapply(files.required, paste, collapse = ", ")
+files.required.unique.string <- unique(files.required.string)
+files.required.unique <- unique(files.required)
+
+## Categorise regions based on the files the require.
+categories.of.requirements <- sapply(unique(files.required.unique.string),
+                                     function(required.files) {
+    which(files.required.string == required.files)
+})
+
+single.tiff.requirements <- categories.of.requirements[which(
+    sapply(files.required.unique, length) == 1)]
+
+multiple.tiff.requirements <- categories.of.requirements[which(
+    sapply(files.required.unique, length) > 1)]
+
+## order single.tiff.requirements by estimated computation cost (ignore size)
+tile_cost <- sapply(single.tiff.requirements, length)
+ord <- order(tile_cost, decreasing = TRUE)
+single.tiff.requirements <- single.tiff.requirements[ord]
+
+@
+
+<<calculate.full.grid>>=
+
+if(file.exists("/mnt/c")){
+    n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
+    ## which in turn makes the unresponsive if I use more cores than this.
+}
+globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
+          "deforestation.log")
+plan(multisession, workers = n.cores)
+
+if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")) {
+    temporal.loss <- readRDS("temporal.loss.RDS")
+}
+
+my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE)
+
+ globallivingconditions::my.log.f(paste(Sys.time(),
+             "Ready with large polygons"),
+                 "deforestation.log")    
+
+## if(exists("temporal.loss")) {
+##     ## export temporal.loss to the nodes.
+##     my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE, future.globals = list(temporal.loss = temporal.loss, dhs.grid = dhs.grid, file.name.from.bbox.f = file.name.from.bbox.f, url.from.point.f = url.from.point.f, file.name.prefix = file.name.prefix, file.name.prefix = file.name.prefix))
+## } else {
+##     my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE)
+## }
+
+## doFuture::registerDoFuture()
+
+## small.areas.means.from.single.tiff <- data.table::rbindlist(
+##    foreach(i=1:length(single.tiff.requirements),
+##            .options.future = list(scheduling = 1, chunk.size = 1),
+##            .export = c("file.name.from.bbox.f", "url.from.point.f")) %dorng% {
+
+##                if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")){
+##                    temporal.loss <- readRDS("temporal.loss.RDS")
+##                }
+
+##  ## Make note in the log that we started working with this tiff, so that we can track progress.
+##  globallivingconditions::my.log.f(paste(Sys.time(),
+##              "Starting to work with tiff number", i, "which is used by",
+##              length(single.tiff.requirements[[i]]), "polygons"),
+##                  "deforestation.log")    
+
+##  ## create the two file names needed for this batch.
+##  my.cover.file <- names(single.tiff.requirements)[i]
+##  my.loss.file <- gsub("treecover2000", "lossyear", my.cover.file, fixed = TRUE)
+##  fetch.raster(c(my.cover.file, my.loss.file), deforestation.path = deforestation.path)
+##  my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.file))
+##  my.loss.raster <- raster::raster(paste0(deforestation.path, my.loss.file))
+
+##  small.areas <- single.tiff.requirements[[i]]
+
+##  ## define a function
+##  temporal.loss.from.single.file.pointer.f <- function(j) {
+     
+##     ## check if stats for this polygon are already calculated.
+##     if(exists("temporal.loss")) {
+##         hit <- match(names(dhs.grid)[j], temporal.loss$region)
+##         if(is.na(hit) == FALSE){
+##             return(temporal.loss[hit, ])
+##         }
+##     }
+
+##     polygon <- dhs.grid[j]
+##     my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(
+##         polygon, my.cover.raster, my.loss.raster)
+##     absolute.loss.per.year <- sapply(1:(length(
+##         my.raster.stats$coverage)-1), function(k) {
+##             my.raster.stats$coverage[["t0"]] -
+##                 my.raster.stats$coverage[[paste0("t", k)]] })
+##     globallivingconditions::my.log.f(paste(Sys.time(),
+##               "Ready with temporal loss for area", names(dhs.grid)[j],
+##               "size", round(my.raster.stats$size/1e6), "Km^2"),
+##                  "deforestation.log")
+##     temporal.loss <- cbind(data.table::data.table(
+##                                            region = names(
+##                                                dhs.grid)[j],
+##                                            my.raster.stats$size,
+##                                            coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
+##                            t(data.frame(absolute.loss.per.year)))
+## }
+
+##  ## iterate over all indices, note only normal sequential sappply() here,
+##  ## because this is the inner loop.
+##  my.temp.dt <- data.table::rbindlist(sapply(non.large.polygons[small.areas],
+##                              temporal.loss.from.single.file.pointer.f, simplify = FALSE))
+## })
+
+## if(exists("temporal.loss")) {
+##     ## export temporal.loss to the nodes.
+##     small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp", simplify = FALSE, future.globals = list(temporal.loss = temporal.loss, dhs.grid = dhs.grid, file.name.from.bbox.f = file.name.from.bbox.f, url.from.point.f = url.from.point.f))
+## } else {
+##     small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp", simplify = FALSE)
+## }
 
 @ 
 
