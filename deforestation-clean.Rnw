@@ -1701,6 +1701,13 @@ fit_g4 <- gamm4(
 
 @ 
 
+<<non.dhs.countries>>=
+africa.non.dhs <- c("Algeria", "Tunisia", "Libya", "Congo", "Botswana", "Lesotho", "Guinea-Bissau", "Equatorial Guinea", "Western Sahara", "Sudan", "South Sudan", "Eritrea", "Djibouti", "Somalia")
+
+south.america.non.dhs <- c("Brazil", "Argentina", "Chile", "Urugay", "Paraguay", "Venezuela", "Ecuador", "Panama", "Costa Rica", "Nicaragua", "Belize", "Mexico", "Cuba", "Jamaica")
+
+
+@ 
 
 \end{document}
 
