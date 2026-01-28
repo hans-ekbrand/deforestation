@@ -35,7 +35,7 @@ install_bitbucket(repo = "hansekbrand/iwi")
 install_bitbucket(repo = "hansekbrand/DHSharmonisation", upgrade = "never", ref = "debug")
 @ 
 
-<<load.data.using.child.document, child=system.file("dhs-debug-child.Rnw", package="globallivingconditions"), eval = ! file.exists("final.RDS")>>=
+<<load.data.using.child.document, child=system.file("dhs-debug-child.Rnw", package="globallivingconditions")>>=
 @ 
 
 
@@ -62,21 +62,32 @@ The program downloads almost all of the necessary data from the internet, but da
 Define paths.
 
 <<setup.more>>=
+deforestation.common.path <- paste0("Deforestation and poverty ",
+                                    "- Forest coverage/")
+gis.path.sf.common.path <- paste0("Deforestation and poverty - ",
+                                  "DHS/GIS-borders-SF/")
 country.data.path <- paste0("~/annex/projekt/",
       "global-living-conditions/stora-eller-statiska-filer/",
       "deforestation/Country data/")
 africa.map.path <- paste0("~/annex/projekt/child-poverty/",
                           "statiska-eller-stora-filer/")
+
 if(file.exists("/mnt/c")) {
-    deforestation.path <- paste0("/mnt/c/Users/xekbha/",
-      "University of Gothenburg/Deforestation and",
-      " poverty - Forest coverage/")
+    laptop.common <- paste0("/mnt/c/Users/xekbha/",
+      "University of Gothenburg/")
+    deforestation.path <- paste0(laptop.common,
+                                 deforestation.common.path)
+    gis.path.sf <- paste0(laptop.common, gis.path.sf.common.path)
 }
+
 if(file.exists("/media/sf_Our_data")) {
-    deforestation.path <- paste0("/media/sf_Our_data/Hans/Onedrive/",
-      "University of Gothenburg/Deforestation and",
-      " poverty - Forest coverage/")
+    server.common <- paste0("/media/sf_Our_data/Hans/Onedrive/",
+      "University of Gothenburg/")
+    deforestation.path <- paste0(server.common,
+                                 deforestation.common.path)
+    gis.path.sf <- paste0(server.common, gis.path.sf.common.path)    
 }
+
 if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
     deforestation.path <- paste0("/mimer/NOBACKUP/groups/",
                                  "globalpoverty1/hans/Deforestation/")
@@ -89,7 +100,7 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
 
 Install required packages.
 
-<<install.packages, cache = TRUE>>=
+<<install.packages>>=
 required.packages <- c("httr", "data.table", "car", "sp", "raster", "devtools",
                      "purrr", "doParallel", "snow", "viridisLite", "geosphere",
                        "parallel", "foreach", "tmap", "terra", "sf", "lme4",
@@ -653,6 +664,14 @@ temporal.loss.directly.from.possible.multiple.files <- function(index,
       deforestation.path, ...) {
 
     ## This version is for smaller polygons, less than 5k Km^2
+
+    ## check if stats for this polygon are already calculated.
+    if(exists("temporal.loss")) {
+        hit <- match(names(dhs.grid)[index], temporal.loss$region)
+        if(is.na(hit) == FALSE){
+            return(temporal.loss[hit, ])
+        }
+    }
     
     ## index refers to dhs.grid
     polygon <- dhs.grid[index]
@@ -827,9 +846,13 @@ temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index,
     return(results)
 }
 
+@
+
+<<task.creation>>=
 ## Split tasks by RAM requirements
 library(future.apply)
-plan(multisession, workers = 7)
+n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
+plan(multisession, workers = n.cores)
 
 area.sizes <- future_sapply(dhs.grid@polygons, function(p) {
   # p is a 'Polygons' object; slot(p, "Polygons") is a list of 'Polygon' rings
@@ -867,7 +890,7 @@ tile_cost <- sapply(single.tiff.requirements, length)
 ord <- order(tile_cost, decreasing = TRUE)
 single.tiff.requirements <- single.tiff.requirements[ord]
 
-@
+@ 
 
 \section{Efficient parallelization}
 \label{sec:effic-parall}
@@ -880,17 +903,25 @@ There are three classes of cases that each need a customized strategy for parall
 Setup a cluster, organise by the required tile. Evaluate «temporal.loss.from.single.file.pointer.f()«, which is basically a wrapper around «average.coverage.over.time.directly.from.single.file.pointer.fast()« but that also creates the needer raster pointers, on all areas that require the same single tile.
 
 <<small.polygons>>=
-if(file.exists("small.polygons.RDS")) {
-    small.areas.means.from.single.tiff <- readRDS("small.polygons.RDS")
-} else {
 library(foreach); library(future); library(doRNG)
-## n.cores <- parallelly::availableCores(method = c("Slurm", "system"))-1
-## plan(multisession, workers = n.cores)
+if(file.exists("/mnt/c")){
+    n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
+    ## which in turn makes the unresponsive if I use more cores than this.
+} else {
+    n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
+}
+## Do not depend on the previous chunks being run in the same session, reset future().
+plan(sequential)
+plan(multisession, workers = n.cores)
 doFuture::registerDoFuture()
 
 small.areas.means.from.single.tiff <- data.table::rbindlist(
    foreach(i=1:length(single.tiff.requirements),
            .options.future = list(scheduling = 1, chunk.size = 1)) %dorng% {
+
+               if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")){
+                   temporal.loss <- readRDS("temporal.loss.RDS")
+               }
 
  ## Make note in the log that we started working with this tiff, so that we can track progress.
  globallivingconditions::my.log.f(paste(Sys.time(),
@@ -909,6 +940,15 @@ small.areas.means.from.single.tiff <- data.table::rbindlist(
 
  ## define a function
  temporal.loss.from.single.file.pointer.f <- function(j) {
+     
+    ## check if stats for this polygon are already calculated.
+    if(exists("temporal.loss")) {
+        hit <- match(names(dhs.grid)[j], temporal.loss$region)
+        if(is.na(hit) == FALSE){
+            return(temporal.loss[hit, ])
+        }
+    }
+
     polygon <- dhs.grid[j]
     my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(
         polygon, my.cover.raster, my.loss.raster)
@@ -933,13 +973,19 @@ small.areas.means.from.single.tiff <- data.table::rbindlist(
  my.temp.dt <- data.table::rbindlist(sapply(non.large.polygons[small.areas],
                              temporal.loss.from.single.file.pointer.f, simplify = FALSE))
 })
-}
 
 @
 
-<<large.polygons.aggressive.parallelisation, eval = ! file.exists("my.spdf.RDS")>>=
-temporal.loss.non.forking.version <- function(
-         index, deforestation.path, ...) {
+<<large.polygons.aggressive.parallelisation>>=
+temporal.loss.non.forking.version <- function(index, deforestation.path, ...) {
+
+    ## check if stats for this polygon are already calculated.
+    if(exists("temporal.loss")) {
+        hit <- match(names(dhs.grid)[index], temporal.loss$region)
+        if(is.na(hit) == FALSE){
+            return(temporal.loss[hit, ])
+        }
+    }
 
     ## index refers to dhs.grid
     polygon <- dhs.grid[index]
@@ -1087,73 +1133,44 @@ if(file.exists("/mnt/c")){
 globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
           "deforestation.log")
 plan(multisession, workers = n.cores)
-my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE)
 
-@
-
-<<make.my.means.a.data.table, echo = FALSE, eval = ! file.exists("my.spdf.RDS")>>=
-## recover a useful structure for the data of my.means. I forgot "simplify = FALSE" in future_sapply(), so have to fix that now.
-# ensure it's a matrix-like object
-mat <- as.matrix(my.means)   # uses existing dim / dimnames
-
-# defensive check (will stop with informative message if shape unexpected)
-if (nrow(mat) != length(attr(mat, "dimnames")[[1]])) {
-  stop("Unexpected shape: number of rows doesn't match length of dimnames[[1]]")
+if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")) {
+    temporal.loss <- readRDS("temporal.loss.RDS")
+}
+if(exists("temporal.loss")) {
+    ## export temporal.loss to the nodes.
+    my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE, future.globals = list(temporal.loss = temporal.loss, dhs.grid = dhs.grid))
+} else {
+    my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE)
 }
 
-# build list of one-row data.tables (column j -> one-row DT)
-dt_list <- lapply(seq_len(ncol(mat)), function(j) {
-  vals <- mat[, j]                             # named vector of length 26
-  names(vals) <- attr(mat, "dimnames")[[1]]    # ensure names come from dimnames[[1]]
-  # convert types sensibly (numbers -> numeric, "NA" -> NA, keep strings)
-  vals_list <- type.convert(as.list(vals), as.is = TRUE)
-  as.data.table(vals_list)                     # single-row data.table
-})
-
-# optional: attach original column index/name as an id when binding
-combined <- rbindlist(dt_list, use.names = TRUE, fill = TRUE, idcol = "orig_col")
-combined[ , orig_col := NULL, ]
-my.means <- combined
-large.polygons.results <- my.means
-@ 
+@
 
 Remaining ones are small and requires more than one tile. Just apply temporal.loss.directly.from.possible.multiple.files on all of them.
 
 <<small.multiple.tiles>>=
-library(foreach); library(future); library(doRNG); library(future.apply)
-n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
-globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
-          "deforestation.log")
+library(foreach); library(future); library(doRNG)
+if(file.exists("/mnt/c")){
+    n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
+    ## which in turn makes the unresponsive if I use more cores than this.
+} else {
+    n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
+}
+## Do not depend on the previous chunks being run in the same session, reset future().
+plan(sequential)
 plan(multisession, workers = n.cores)
 
-small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp")
-
-@
-
-<<make.small.multiple.tiles.data.table, echo = FALSE, eval = ! file.exists("my.spdf.RDS")>>=
-## same thing goes for small.multiple.tiles
-mat <- as.matrix(small.multiple.tiles)   # uses existing dim / dimnames
-
-# defensive check (will stop with informative message if shape unexpected)
-if (nrow(mat) != length(attr(mat, "dimnames")[[1]])) {
-  stop("Unexpected shape: number of rows doesn't match length of dimnames[[1]]")
+if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")) {
+    temporal.loss <- readRDS("temporal.loss.RDS")
+}
+if(exists("temporal.loss")) {
+    ## export temporal.loss to the nodes.
+    small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp", simplify = FALSE, future.globals = list(temporal.loss = temporal.loss, dhs.grid = dhs.grid))
+} else {
+    small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp", simplify = FALSE)
 }
 
-# build list of one-row data.tables (column j -> one-row DT)
-dt_list <- lapply(seq_len(ncol(mat)), function(j) {
-  vals <- mat[, j]                             # named vector of length 26
-  names(vals) <- attr(mat, "dimnames")[[1]]    # ensure names come from dimnames[[1]]
-  # convert types sensibly (numbers -> numeric, "NA" -> NA, keep strings)
-  vals_list <- type.convert(as.list(vals), as.is = TRUE)
-  as.data.table(vals_list)                     # single-row data.table
-})
-
-# optional: attach original column index/name as an id when binding
-combined <- rbindlist(dt_list, use.names = TRUE, fill = TRUE, idcol = "orig_col")
-combined[ , orig_col := NULL, ]
-small.multiple.tiles.results <- combined
-
-@ 
+@
 
 Stitch together the three pieces. Apparently, the `size` column in `small.areas.means.from.single.tiff` is wrongly called ``V2'', fix that in a way that is robust to the fact that other columns in the data set has the name ``V2''.
 
@@ -1163,8 +1180,12 @@ if(file.exists("my.spdf.RDS")) {
     sfdf <- readRDS("my.sfdf.RDS")
     temporal.loss <- readRDS("temporal.loss.RDS")
 } else {
-
-colnames(small.areas.means.from.single.tiff)[2] <- "size"
+    small.multiple.tiles.results <- data.table::rbindlist(small.multiple.tiles)
+    large.polygons.results <- data.table::rbindlist(my.means)
+    ## conditionally fix colnames
+    if(colnames(small.areas.means.from.single.tiff)[2] != "size") {
+        colnames(small.areas.means.from.single.tiff)[2] <- "size"
+    }
 
 temporal.loss <- rbind(large.polygons.results, small.multiple.tiles.results, small.areas.means.from.single.tiff)
 
@@ -1249,7 +1270,6 @@ plot(st_geometry(africa_extent), add = TRUE)
 <<get.more.borders.select.south.america>>=
 library(sf)
 
-gis.path.sf <- "/mnt/c/Users/xekbha/University of Gothenburg/Deforestation and poverty - DHS/GIS-borders-SF/"
 dir.create(gis.path.sf, showWarnings = FALSE, recursive = TRUE)
 
 library(globallivingconditions) ## iso.3166 and my.log.f()
