@@ -192,6 +192,32 @@ for(i in 1:length(bad.names)){
 }
 @
 
+<<continued.country.online>>=
+library(wbstats); library(data.table)
+library(globallivingconditions)
+## Use the WB package to obtain data
+## maybe use "gni.constant.international.2017" = "NY.GNP.PCAP.PP.KD",
+## instead of gni.atlas.current.dollar
+
+my_indicators = c("gni.atlas.current.dollar" = "NY.GNP.PCAP.CD",
+                  "percent.goods.and.services.percent.of.gdp" = "NE.EXP.GNFS.ZS",
+                  "agriculture.forestry.percent.of.gdp" = "NV.AGR.TOTL.ZS",
+                  "population.15.64" = "SP.POP.1564.TO"
+                  )
+my_countries <- iso.3166$String.code[match(country.codes, iso.3166$numeric)]
+
+my.log.f(paste(Sys.time(), "indicators =", paste(my_indicators, collapse = ", "),
+               "countries =", paste(my_countries, collapse = ", ")))
+
+gdp.wb <- wb_data(my_indicators, country = my_countries, start_date = 1999, end_date = 2024)
+setDT(gdp.wb)
+gdp.wb[, raw.year := date, ]
+gdp.wb <- gdp.wb[, list(country, raw.year, gni.atlas.current.dollar, percent.goods.and.services.percent.of.gdp,
+                        agriculture.forestry.percent.of.gdp, population.15.64), ]
+setkey(gdp.wb, country, raw.year)
+
+@ 
+
 To identify which grid cell(s) of deforestation data cover the gadm region, find the North West corner, that is, «max(latitude)« and «min(longitude)« of the bounding box, and that gives the first needed cell. Then extend to east and south if necessary. Assume no region covers more than four grid cells.
 
 <<find.the.grid.cell, dependson = "load.data.using.child.document">>=
