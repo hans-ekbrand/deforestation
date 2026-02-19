@@ -1493,7 +1493,7 @@ To control for the sampling noise, include the average education in years for th
 
 Merge the results with the DHS data on living conditions.
 
-<<merge.results>>=
+<<merge.results, eval=FALSE>>=
 library(data.table)
 my.dt <- readRDS("reduced.RDS")
 ## Rename column "region" to "superClusterID" in temporal loss
@@ -1620,7 +1620,7 @@ gc(verbose=FALSE)
 Create a data set suitable for regression with shelter deprivation as the dependent variable.
 
 
-<<continued.for.the.extract, echo = TRUE>>=
+<<continued.for.the.extract, echo = TRUE, eval=FALSE>>=
 test.dt <- data.sets[[match("severe.shelter.deprivation", my.deps)]]
 @
 
@@ -1646,7 +1646,7 @@ The basic unit in the data set is a rather small administrative area, on average
 
 Table \vref{tab:data} provides an excerpt from the data set that includes data on severe shelter deprivations, containing \Sexpr{ # nrow(test.dt)} data points about \Sexpr{ # length(unique(test.dt$superClusterID))} unique areas.
 
-<<continued.excerpt, echo = FALSE, results = "asis">>=
+<<continued.excerpt, echo = FALSE, results = "asis", eval=FALSE>>=
 library(data.table)
 set.seed(1)
 these <- sample(unique(test.dt$superClusterID), size = 3)
@@ -1814,9 +1814,9 @@ area.sizes <- future_sapply(seq_len(nrow(full.grid.sf)), function(i) {
 large.polygons <- which(area.sizes > 5e9)
 
 ## For all small regions, derive the necessary grid cells.
-non.large.polygons <- (1:length(dhs.grid))[-large.polygons]
+non.large.polygons <- (1:nrow(full.grid.sf))[-large.polygons]
 files.required <- future_sapply(non.large.polygons, function(i) {
-    file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]),
+    file.name.from.bbox.f(bbox = sp::bbox(sp.grid[i]),
                           layer="treecover2000")
 }, future.seed=TRUE)
 
@@ -1844,7 +1844,7 @@ single.tiff.requirements <- single.tiff.requirements[ord]
 @
 
 <<calculate.full.grid>>=
-
+library(future.apply)
 if(file.exists("/mnt/c")){
     n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
     ## which in turn makes the unresponsive if I use more cores than this.
@@ -1857,87 +1857,395 @@ if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")) {
     temporal.loss <- readRDS("temporal.loss.RDS")
 }
 
-my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE)
+## fix the column names.
+if(length(grep("superClusterID", colnames(temporal.loss))) > 0){
+    colnames(temporal.loss)[match("superClusterID", colnames(temporal.loss))] <- "region"
+}
+
+## Define a new version of temporal.loss.non.forking.version()
+## which takes the grid as an argument.
+
+temporal.loss.non.forking.version <- function(index, the.grid, deforestation.path, ...) {
+
+    ## check if stats for this polygon are already calculated.
+    if(exists("temporal.loss")) {
+        hit <- match(names(the.grid)[index], temporal.loss$region)
+        if(is.na(hit) == FALSE){
+            globallivingconditions::my.log.f(paste(Sys.time(),
+                                                   "in temporal.loss.non.forking.version()",
+                                                   "working with index =", index,
+                                                   "region name:", names(the.grid)[index],
+                                                   "returning data from temporal.loss"),
+                                             "deforestation.log")
+            return(temporal.loss[hit, ])
+        }
+    }
+
+    ## index refers to the.grid
+    polygon <- the.grid[index]
+    
+    my.bbox <- sp::bbox(polygon)
+    my.cover.files <- file.name.from.bbox.f(
+        bbox = my.bbox, layer = "treecover2000")
+    my.loss.files <- file.name.from.bbox.f(
+        bbox = my.bbox, layer = "lossyear")
+    polygon.size <- geosphere::areaPolygon(polygon)
+    globallivingconditions::my.log.f(paste(Sys.time(),
+         "in temporal.loss.non.forking.version()",
+         "working with index =", index,
+         "region name:", names(the.grid)[index],
+         "About to iterate over", length(my.cover.files),
+         "cover files to produce data about a polygon of size:",
+         round(polygon.size / 1e6), "Km^2"),
+         "deforestation.log")
+         
+    fetch.raster(c(my.cover.files, my.loss.files),
+                 deforestation.path = deforestation.path, ...)
+
+    ## This version of the function should only be called
+    ## sequentially on large areas, since it forks.
+    
+    ## Divide the original polygon in smaller polygons, in order to
+    ## increase efficient parallelize computations.
+
+    extents <- lapply(my.cover.files, function(f) {
+        raster::extent(raster::raster(file.path(deforestation.path, f)))
+    })
+
+    pieces <- split_polygon_by_extents_sp(
+        poly = the.grid[index],
+        extents = extents,
+        target_n = max(7, round(polygon.size / 5e9)) ## 5000 km^2 is fine, 7 because I have 8 cores on the server, so keep them busy
+    )
+
+    ## Sort pieces by size, largest first to make most out of the parallelization
+    pieces <- pieces[order(sapply(pieces, geosphere::areaPolygon), decreasing = TRUE)]
+
+    ## Now loop over pieces instead of the full polygon
+    globallivingconditions::my.log.f(
+       paste(Sys.time(), "iterating over a set of",
+             length(pieces), "small polygons"),
+       "deforestation.log")
+
+    inner.function <- function(p) {
+        ## each p is guaranteed to only require a single cover file.
+        ## but which cover file is it?
+        ## We need to detect that!
+        my.small.bbox <- sp::bbox(p)
+        my.small.cover.file <- file.name.from.bbox.f(
+            bbox = my.small.bbox,
+            layer = "treecover2000")
+        my.small.loss.file <- file.name.from.bbox.f(
+            bbox = my.small.bbox,
+            layer = "lossyear")
+
+        ## debug START
+        small.polygon.size <- geosphere::areaPolygon(p)
+        globallivingconditions::my.log.f(
+            paste(Sys.time(), "Working with a small polygon with size",
+                  round(small.polygon.size/1e6), "Km^2"),
+            "deforestation.log")
+        ## debug STOP
+            
+        average.coverage.over.time.directly.from.single.file.fast(
+            polygon = p, my.cover.file = my.small.cover.file,
+            my.loss.file = my.small.loss.file,
+            deforestation.path = deforestation.path)
+    }
+
+    my.raster.stats <- sapply(pieces, inner.function, simplify = FALSE)
+    ## At this point, no more data collection from disk is needed, so clean the
+    ## cache now.
+    raster_tmp <- file.path(tempdir(), "raster")
+
+    if (dir.exists(raster_tmp)) {
+        globallivingconditions::my.log.f(
+         paste(Sys.time(), "Cleaning the temp-dir/raster used for index", index), 
+         "deforestation.log") 
+        
+        unlink(raster_tmp, recursive = TRUE, force = TRUE)
+    }
+    
+    ## If any element is NULL remove it
+    ## (This probably only happened due to a bug in file.name.from.bbox.f
+    ## which included tiles that only shared points but not area with the polygon)
+    
+    these.are.null <- which(sapply(my.raster.stats, is.null))
+    if(length(these.are.null) > 0) {
+        ## assume not all of them are null
+        my.raster.stats <- my.raster.stats[-these.are.null]
+    }
+
+    globallivingconditions::my.log.f(
+         paste(Sys.time(), "my.raster.stats are ready for index", index), 
+         "deforestation.log") 
+        
+    ## if there are still more than one element, then create a
+    ## weighted mean
+    if(length(my.raster.stats) > 1) {
+        weights <- as.vector(prop.table(unlist(sapply(seq(from = 1,
+                             to = length(my.raster.stats)), function(i) {
+                                 my.raster.stats[[i]][1] }))))
+        ## restructure so that we don't need to know the number of
+        ## tiff-files were used
+        my.data <- Reduce(cbind, sapply(1:length(my.raster.stats),
+             function(i) { my.raster.stats[[i]][[2]] }, simplify = FALSE))
+            weighted.means <- sapply(1:nrow(my.data), function(i) {
+                round(weighted.mean(x = unlist(my.data[i, ]),
+                                    w = weights), 16)
+            })
+        names(weighted.means) <- paste0("t", 0:(length(
+                                                 weighted.means)-1))
+        my.raster.stats <- list(size = sum(unlist(sapply(seq(from = 1,
+                            to = length(my.raster.stats)), function(i) {
+                                my.raster.stats[[i]][1] }))),
+                            coverage = weighted.means)
+        } else {
+            ## just flatten
+            my.raster.stats <- my.raster.stats[[1]]
+        }
+    absolute.loss.per.year <- sapply(1:(length(my.raster.stats$coverage)-1),
+       function(i) { my.raster.stats$coverage[["t0"]] -
+                         my.raster.stats$coverage[[paste0("t", i)]] })
+    temporal.loss <- cbind(data.table::data.table(
+               region = names(the.grid)[index],
+               size = geosphere::areaPolygon(polygon),
+               coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
+               t(data.frame(absolute.loss.per.year)))
+    globallivingconditions::my.log.f(paste(Sys.time(), "Ready with",
+          "temporal loss for region", names(the.grid)[index]),
+          "deforestation.log")
+    return(temporal.loss)
+}
+
+## create a SpatialPolygons object (since the existing code assumes that)
+## Surprisingly difficult to set the names() on the SP object.
+sp.grid <- SpatialPolygons(
+  as(full.grid.sf, "Spatial")@polygons,
+  proj4string = CRS(st_crs(full.grid.sf)$wkt)
+)
+library(sp)
+ids <- as.character(full.grid.sf$region)
+# set IDs on each Polygons object
+for (i in seq_along(sp.grid@polygons)) {
+  sp.grid@polygons[[i]]@ID <- ids[i]
+}
+
+@
+
+<<calculate.means.full.grid>>=
+if(file.exists("/mnt/c")){
+    n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
+    ## which in turn makes the unresponsive if I use more cores than this.
+}
+globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
+                                 "deforestation.log")
+plan(sequential)
+plan(multisession, workers = n.cores)
+
+my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, the.grid = sp.grid, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE)
 
  globallivingconditions::my.log.f(paste(Sys.time(),
              "Ready with large polygons"),
                  "deforestation.log")    
 
-## if(exists("temporal.loss")) {
-##     ## export temporal.loss to the nodes.
-##     my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE, future.globals = list(temporal.loss = temporal.loss, dhs.grid = dhs.grid, file.name.from.bbox.f = file.name.from.bbox.f, url.from.point.f = url.from.point.f, file.name.prefix = file.name.prefix, file.name.prefix = file.name.prefix))
-## } else {
-##     my.means <- future_sapply(large.polygons, temporal.loss.non.forking.version, deforestation.path = deforestation.path, future.seed=TRUE, simplify = FALSE)
-## }
+@ 
 
-## doFuture::registerDoFuture()
+<<calc.small.areas.from.single.tiff>>=
+if(file.exists("/mnt/c")){
+    n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
+    ## which in turn makes the unresponsive if I use more cores than this.
+}
+globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
+                                 "deforestation.log")
+library(future); library(doRNG)
+plan(sequential)
+plan(multisession, workers = n.cores)
 
-## small.areas.means.from.single.tiff <- data.table::rbindlist(
-##    foreach(i=1:length(single.tiff.requirements),
-##            .options.future = list(scheduling = 1, chunk.size = 1),
-##            .export = c("file.name.from.bbox.f", "url.from.point.f")) %dorng% {
+doFuture::registerDoFuture()
 
-##                if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")){
-##                    temporal.loss <- readRDS("temporal.loss.RDS")
-##                }
+## c("file.name.from.bbox.f", "url.from.point.f"
 
-##  ## Make note in the log that we started working with this tiff, so that we can track progress.
-##  globallivingconditions::my.log.f(paste(Sys.time(),
-##              "Starting to work with tiff number", i, "which is used by",
-##              length(single.tiff.requirements[[i]]), "polygons"),
-##                  "deforestation.log")    
+the.grid <- sp.grid
 
-##  ## create the two file names needed for this batch.
-##  my.cover.file <- names(single.tiff.requirements)[i]
-##  my.loss.file <- gsub("treecover2000", "lossyear", my.cover.file, fixed = TRUE)
-##  fetch.raster(c(my.cover.file, my.loss.file), deforestation.path = deforestation.path)
-##  my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.file))
-##  my.loss.raster <- raster::raster(paste0(deforestation.path, my.loss.file))
+small.areas.means.from.single.tiff <- data.table::rbindlist(
+       foreach(i=1:length(single.tiff.requirements),
+           .options.future = list(scheduling = 1, chunk.size = 1),
+           .export = c("temporal.loss", "the.grid")) %dorng% {
 
-##  small.areas <- single.tiff.requirements[[i]]
+ ## Make note in the log that we started working with this tiff, so that we can track progress.
+ globallivingconditions::my.log.f(paste(Sys.time(),
+             "Starting to work with tiff number", i, "which is used by",
+             length(single.tiff.requirements[[i]]), "polygons"),
+                 "deforestation.log")    
 
-##  ## define a function
-##  temporal.loss.from.single.file.pointer.f <- function(j) {
+ ## create the two file names needed for this batch.
+ my.cover.file <- names(single.tiff.requirements)[i]
+ my.loss.file <- gsub("treecover2000", "lossyear", my.cover.file, fixed = TRUE)
+ fetch.raster(c(my.cover.file, my.loss.file), deforestation.path = deforestation.path)
+ my.cover.raster <- raster::raster(paste0(deforestation.path, my.cover.file))
+ my.loss.raster <- raster::raster(paste0(deforestation.path, my.loss.file))
+
+ small.areas <- single.tiff.requirements[[i]]
+
+ ## define a function
+ temporal.loss.from.single.file.pointer.f <- function(j) {
      
-##     ## check if stats for this polygon are already calculated.
-##     if(exists("temporal.loss")) {
-##         hit <- match(names(dhs.grid)[j], temporal.loss$region)
-##         if(is.na(hit) == FALSE){
-##             return(temporal.loss[hit, ])
-##         }
-##     }
+    ## check if stats for this polygon are already calculated.
+    if(exists("temporal.loss")) {
+        hit <- match(names(the.grid)[j], temporal.loss$region)
+        if(is.na(hit) == FALSE){
+            return(temporal.loss[hit, ])
+        }
+    }
 
-##     polygon <- dhs.grid[j]
-##     my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(
-##         polygon, my.cover.raster, my.loss.raster)
-##     absolute.loss.per.year <- sapply(1:(length(
-##         my.raster.stats$coverage)-1), function(k) {
-##             my.raster.stats$coverage[["t0"]] -
-##                 my.raster.stats$coverage[[paste0("t", k)]] })
-##     globallivingconditions::my.log.f(paste(Sys.time(),
-##               "Ready with temporal loss for area", names(dhs.grid)[j],
-##               "size", round(my.raster.stats$size/1e6), "Km^2"),
-##                  "deforestation.log")
-##     temporal.loss <- cbind(data.table::data.table(
-##                                            region = names(
-##                                                dhs.grid)[j],
-##                                            my.raster.stats$size,
-##                                            coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
-##                            t(data.frame(absolute.loss.per.year)))
-## }
+    polygon <- the.grid[j]
+    my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(
+        polygon, my.cover.raster, my.loss.raster)
+    absolute.loss.per.year <- sapply(1:(length(
+        my.raster.stats$coverage)-1), function(k) {
+            my.raster.stats$coverage[["t0"]] -
+                my.raster.stats$coverage[[paste0("t", k)]] })
+    globallivingconditions::my.log.f(paste(Sys.time(),
+              "Ready with temporal loss for area", names(the.grid)[j],
+              "size", round(my.raster.stats$size/1e6), "Km^2"),
+                 "deforestation.log")
+    temporal.loss <- cbind(data.table::data.table(
+                                           region = names(
+                                               the.grid)[j],
+                                           my.raster.stats$size,
+                                           coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
+                           t(data.frame(absolute.loss.per.year)))
+}
 
-##  ## iterate over all indices, note only normal sequential sappply() here,
-##  ## because this is the inner loop.
-##  my.temp.dt <- data.table::rbindlist(sapply(non.large.polygons[small.areas],
-##                              temporal.loss.from.single.file.pointer.f, simplify = FALSE))
-## })
+ ## iterate over all indices, note only normal sequential sappply() here,
+ ## because this is the inner loop.
+ my.temp.dt <- data.table::rbindlist(sapply(non.large.polygons[small.areas],
+                             temporal.loss.from.single.file.pointer.f, simplify = FALSE))
+           })
 
-## if(exists("temporal.loss")) {
-##     ## export temporal.loss to the nodes.
-##     small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp", simplify = FALSE, future.globals = list(temporal.loss = temporal.loss, dhs.grid = dhs.grid, file.name.from.bbox.f = file.name.from.bbox.f, url.from.point.f = url.from.point.f))
-## } else {
-##     small.multiple.tiles <- future_sapply(non.large.polygons[unlist(multiple.tiff.requirements)], temporal.loss.directly.from.possible.multiple.files, deforestation.path = deforestation.path, future.seed=TRUE, future.packages = "sp", simplify = FALSE)
-## }
+globallivingconditions::my.log.f(paste(Sys.time(),
+             "Ready with small.areas.means.from.single.tiff"),
+             "deforestation.log")
+
+temporal.loss.directly.from.possible.multiple.files <- function(index, the.grid,
+                                           deforestation.path, ...) {
+
+    ## the.grid is assumed to be available as a global object 
+
+    ## This version is for smaller polygons, less than 5k Km^2
+
+    ## check if stats for this polygon are already calculated.
+    if(exists("temporal.loss")) {
+        hit <- match(names(the.grid)[index], temporal.loss$region)
+        if(is.na(hit) == FALSE){
+            return(temporal.loss[hit, ])
+        }
+    }
+    
+    ## index refers to the.grid
+    polygon <- the.grid[index]
+    
+    my.bbox <- sp::bbox(polygon)
+    my.cover.files <- file.name.from.bbox.f(
+        bbox = my.bbox, layer = "treecover2000")
+    my.loss.files <- file.name.from.bbox.f(
+        bbox = my.bbox, layer = "lossyear")
+    polygon.size <- geosphere::areaPolygon(polygon)
+
+    globallivingconditions::my.log.f(paste(Sys.time(),
+         "in temporal.loss.directly.from.possible.multiple.files()",
+         "working with index =", index,
+         "region name:", names(the.grid)[index],
+         "About to iterate over", length(my.cover.files),
+         "cover files to produce data about a polygon of size:",
+         round(polygon.size / 1e6), "Km^2"),
+         "deforestation.log")
+         
+    fetch.raster(c(my.cover.files, my.loss.files),
+                 deforestation.path = deforestation.path, ...)
+
+    if(length(my.cover.files) > 1) {
+
+        my.raster.stats <- sapply(1:length(my.cover.files), function (i) {
+
+            globallivingconditions::my.log.f(
+                paste(Sys.time(), "Starting to work with cover file", i),
+                "deforestation.log")
+            
+            average.coverage.over.time.directly.from.single.file.fast(
+                polygon = polygon, my.cover.file = my.cover.files[i],
+                my.loss.file = my.loss.files[i],
+                deforestation.path = deforestation.path)
+        }, simplify = FALSE)
+
+        ## If any element is NULL remove it
+        these.are.null <- which(sapply(my.raster.stats, is.null))
+        if(length(these.are.null) > 0) {
+            ## assume not all of them are null
+            my.raster.stats <- my.raster.stats[-these.are.null]
+        }
+
+        globallivingconditions::my.log.f(
+          paste(Sys.time(), "my.raster.stats are ready for index", index), 
+           "deforestation.log") 
+        
+        ## if there are still more than one element, then create a
+        ## weighted mean
+        if(length(my.raster.stats) > 1) {
+            weights <- as.vector(prop.table(unlist(sapply(seq(from = 1,
+                             to = length(my.raster.stats)), function(i) {
+                                 my.raster.stats[[i]][1] }))))
+            ## restructure so that we don't need to know the number of
+            ## tiff-files were used
+            my.data <- Reduce(cbind, sapply(1:length(my.raster.stats),
+             function(i) { my.raster.stats[[i]][[2]] }, simplify = FALSE))
+            weighted.means <- sapply(1:nrow(my.data), function(i) {
+                round(weighted.mean(x = unlist(my.data[i, ]),
+                                    w = weights), 16)
+            })
+            names(weighted.means) <- paste0("t", 0:(length(
+                                                     weighted.means)-1))
+            my.raster.stats <- list(size = sum(unlist(sapply(seq(from = 1,
+                            to = length(my.raster.stats)), function(i) {
+                                my.raster.stats[[i]][1] }))),
+                            coverage = weighted.means)
+        } else {
+            ## just flatten
+            my.raster.stats <- my.raster.stats[[1]]
+        }
+    } else {
+        my.raster.stats <- average.coverage.over.time.directly.from.single.file.fast(
+            polygon = polygon, my.cover.file = my.cover.files,
+            my.loss.file = my.loss.files, deforestation.path)
+    }
+    absolute.loss.per.year <- sapply(1:(length(my.raster.stats$coverage)-1),
+       function(i) { my.raster.stats$coverage[["t0"]] -
+                         my.raster.stats$coverage[[paste0("t", i)]] })
+    temporal.loss <- cbind(data.table::data.table(
+               region = names(the.grid)[index],
+               size = geosphere::areaPolygon(polygon),
+               coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
+               t(data.frame(absolute.loss.per.year)))
+    globallivingconditions::my.log.f(paste(Sys.time(), "Ready with",
+          "temporal loss for region", names(the.grid)[index]),
+          "deforestation.log")
+    return(temporal.loss)
+}
+
+## multicore works best here, probably also in small.areas.means.from.single.tiff
+## scheduling=Inf is the most aggressive load balancing: each node only gets one item at a time.
+
+plan(sequential)
+plan(multicore, workers = n.cores)
+
+small.multiple.tiles <- data.table::rbindlist(future_lapply(
+                      X = non.large.polygons[unlist(multiple.tiff.requirements)],
+                      FUN = temporal.loss.directly.from.possible.multiple.files,
+                      the.grid = sp.grid,
+                      deforestation.path = deforestation.path,
+                      future.seed = TRUE, future.packages = "sp",
+                      future.scheduling = Inf))
 
 @ 
 
