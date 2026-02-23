@@ -85,6 +85,13 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
     africa.map.path <- "~/maps/"
 }
 
+if(file.exists("/mnt/windows/Deforestation and poverty - DHS/")) {
+    server.common <- "/mnt/windows/"
+    deforestation.path <- paste0(server.common,
+                                 deforestation.common.path)
+    gis.path.sf <- paste0(server.common, gis.path.sf.common.path)    
+}
+
 @
 
 Install required packages.
