@@ -12,6 +12,12 @@
 \usepackage{amsmath} %% \pmatrix
 \usepackage{subfig}
 
+% Caption styling - reduced spacing
+\usepackage{caption}
+\captionsetup{
+  skip=12pt
+}
+
 %% make a single « start and end a chunk of \texttt{}, and two «« to represent the literal «.
 \catcode`«=\active
 \def«#1«{\texttt{#1}}
@@ -2046,8 +2052,9 @@ for (i in seq_along(sp.grid@polygons)) {
 
 @
 
-<<full-grid, fig.cap = "The border of the administrative areas used.", fig.width=6.45, fig.height=6.45>>=
+<<full-grid, fig.cap = "The borders of the administrative areas used.", dpi = 400, fig.width=7, fig.height=3>>=
 library(sf)
+par(mar = c(0, 0, 0, 0))
 plot(st_geometry(full.grid.sf), lwd = 0.05)
 @ 
 
@@ -2497,62 +2504,53 @@ small.multiple.tiles <- data.table::rbindlist(future_lapply(
 
 @
 
-<<stitch2, eval = FALSE>>=
-large.polygons.results <- data.table::rbindlist(my.means)
-small.areas.means.from.single.tiff.results <- data.table::rbindlist(small.areas.means.from.single.tiff)
-early.results.dt <- data.table::rbindlist(early.results)
-temporal.loss <- rbind(large.polygons.results, small.multiple.tiles, early.results.dt, small.areas.means.from.single.tiff.results)
-## create a SPDF object, with one layer for each year.
-library(data.table)
-library(sp)
-library(raster)
-
-# 1) Match rows in temporal.loss to polygon order in dhs.grid
-#    (assumes names(dhs.grid) are the region IDs)
-setDT(temporal.loss)
-
-# keep only needed columns (drop size)
-keep_cols <- c("region", "coverage.at.t0", paste0("V", 1:23))
-dt <- temporal.loss[, ..keep_cols]
-
-# reorder to match polygon names
-idx <- match(names(sp.grid), dt$region)
-
-## still some areas not accounted for, fix them now.
-still.missing <- which(is.na(idx))
-
-if (anyNA(idx)) {
-  missing <- names(sp.grid)[is.na(idx)]
-  stop("These polygons have no matching 'region' row in temporal.loss:\n",
-       paste(missing, collapse = ", "))
-}
-dt <- dt[idx]
-
-# also verify there are no duplicated regions (optional but recommended)
-if (any(duplicated(dt$region))) {
-  stop("Duplicated region names in temporal.loss (cannot 1:1 match to polygons).")
-}
-
-## Drop "region", access it via rownames(spdf@data) instead.
-dt[, region := NULL, ]
-
-# 2) Base SPDF with all attributes (coverage.at.t0 + V1..V23)
-#    row.names must align with polygon IDs
-spdf <- SpatialPolygonsDataFrame(
-  Sr = dhs.grid,
-  data = as.data.frame(dt),
-  match.ID = FALSE
-)
-row.names(spdf@data) <- names(dhs.grid)
-
+<<stitch2>>=
+temporal.loss <- rbind(large.polygons.results.dt, early.results.dt, late.results.dt, small.multiple.tiles)
+library(dplyr)
 library(sf)
-sfdf <- st_as_sf(spdf)
+# Ensure full.grid.sf stays as an sf object
+temporal.loss.sf <- dplyr::left_join(
+  full.grid.sf,      # sf object
+  temporal.loss,     # data.frame or data.table
+  by = "region",
+  keep = FALSE
+)
 
-saveRDS(spdf, file = "my.spdf.RDS")
-saveRDS(sfdf, file = "my.sfdf.RDS")
-    saveRDS(temporal.loss, file = "temporal.loss.RDS")
-    }
+## move `size` to the last column
+temporal.loss.sf <- temporal.loss.sf %>%
+    relocate(size, .after = last_col())
 
+## Rename coverage column
+temporal.loss.sf <- temporal.loss.sf %>%
+  rename(forest.coverage.at.2000 = coverage.at.t0)
+
+# Rename V1-V23 to accumulated.forest.loss.2001-2023
+v_cols <- grep("^V[0-9]+$", names(temporal.loss.sf), value = TRUE)
+
+years <- 2000 + seq_along(v_cols)  # 2001:2023 if 23 columns
+
+temporal.loss.sf <- temporal.loss.sf %>%
+  rename_with(
+    ~ paste0("accumulated.forest.loss.", years),
+    .cols = all_of(v_cols)
+  )
+
+temporal.loss.sf$absolute.loss <- temporal.loss.sf$size * temporal.loss.sf$accumulated.forest.loss.2023
+
+saveRDS(temporal.loss.sf, file = "temporal.loss.sf.RDS")
+
+@
+
+<<forestation, fig.cap = "Forestation in year 2000.", dpi = 400, fig.width=7, fig.height=3>>=
+library(sf); library(ggplot2)
+ggplot(temporal.loss.sf) +
+  geom_sf(aes(fill = forest.coverage.at.2000), color = NA) +   ## no borders
+  scale_fill_gradientn(
+    colours = rev(terrain.colors(256)),
+    limits = c(0, 100),
+    name = "Coverage %"
+  ) +
+  theme_minimal()
 
 @ 
 
