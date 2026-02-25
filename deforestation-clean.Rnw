@@ -1909,35 +1909,19 @@ single.tiff.requirements <- single.tiff.requirements[ord]
 
 @
 
-<<calculate.full.grid>>=
+<<prepare.calculate.full.grid>>=
 library(future.apply)
 if(file.exists("/mnt/c")){
     n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
     ## which in turn makes the unresponsive if I use more cores than this.
+} else {
+    n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
 }
 globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
           "deforestation.log")
-plan(multisession, workers = n.cores)
-
-if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")) {
-    temporal.loss <- readRDS("temporal.loss.RDS")
-}
-
-## fix the column names.
-if(length(grep("superClusterID", colnames(temporal.loss))) > 0){
-    colnames(temporal.loss)[match("superClusterID", colnames(temporal.loss))] <- "region"
-}
-
 @
 
 <<calculate.means.full.grid>>=
-if(file.exists("/mnt/c")){
-    n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
-    ## which in turn makes the unresponsive if I use more cores than this.
-}
-globallivingconditions::my.log.f(paste(Sys.time(), "Using", n.cores, "for future_sapply()"),
-                                 "deforestation.log")
-plan(sequential)
 plan(multicore, workers = n.cores)
 
 if(! exists("temporal.loss") & file.exists("temporal.loss.RDS")) {
@@ -1990,7 +1974,6 @@ temporal.loss.from.single.file.pointer.pure.f <- function(j, the.grid, my.cover.
                                            coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
                            t(data.frame(absolute.loss.per.year)))
 }
-
 if(file.exists("/mnt/c")){
     n.cores = 4 ## my wsl1 laptop forces raster() to create objects on disk,
     ## which in turn makes the unresponsive if I use more cores than this.
