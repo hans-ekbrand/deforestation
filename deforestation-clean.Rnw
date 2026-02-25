@@ -91,13 +91,6 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
     africa.map.path <- "~/maps/"
 }
 
-if(file.exists("/mnt/windows/Deforestation and poverty - DHS/")) {
-    server.common <- "/mnt/windows/"
-    deforestation.path <- paste0(server.common,
-                                 deforestation.common.path)
-    gis.path.sf <- paste0(server.common, gis.path.sf.common.path)    
-}
-
 @
 
 Install required packages.
@@ -316,15 +309,14 @@ url.from.file.f <- function(file.name) { paste0(base.url, file.name) }
 
 To be able to inspect single countries, write a function that loads the borders of the country.
 
-<<borders, eval = FALSE>>=
+<<borders>>=
 get.border <- function(country.code) {
   string.code <- globallivingconditions::iso.3166$String.code[
     match(country.code, globallivingconditions::iso.3166$numeric)
   ]
-  filename <- file.path(my.dir, "GIS-borders", paste0(string.code,
-                                                      "_adm0.rds"))
+  filename <- file.path(gis.path.sf, paste0("gadm41_", string.code, "_0.rds"))
   if (file.exists(filename)) {
-    return(sf::st_as_sf(readRDS(filename)))  # Convert from sp to sf
+    return(readRDS(filename))
   } else {
     return(NULL)
   }
@@ -332,7 +324,7 @@ get.border <- function(country.code) {
 
 @ 
 
-To get the country code from the name use «iso.3166« from «globallivingconditions«.
+Given the (formal) country name, get the three letter country code from the name use «iso.3166« from «globallivingconditions«.
 
 <<code.from.name>>=
 code.from.name <- function(name) {
@@ -343,17 +335,14 @@ code.from.name <- function(name) {
 
 A polygon that covers the whole continent of interest, including countries on the contintent not included in the analysis, the object «africa« is a «terra« vector object, but old code furter down assumes it is a «SpatialPolygons« object, so convert into that.
 
-% «SpatialPolygons« object. Use «raster::union()« to merge polygons to a single border.
-
-
 For verifying that the program is correct, the possibility to compare the pixel based version with the region based version of the same country is vital. Here is how to plot the pixel based version of a single country.
 
 «crop()« reduces the extent so that it matches the bounding box of the region specified as the second argument to «crop()«. This means that «crop()« could just as well work with the bounding box of its second argument. In contrast «mask()« uses the full geometry of its second argument, and for each pixel that lie outside the border of this polygon, «mask()« sets its value to NA. In short, both «crop()« and «mask()« are needed to achieve a small (crop) and correctly encoded (mask) result.
 
 \section{Explanation of the algorithm to produce the loss of tree coverage in an area}
-Since the data is of very high resolution, and the total area of the window is large, this is a Big Data problem, the data to process does not fit into the RAM of the computer. On the one hand there are a set of data files, corresponding to rectangular patches of the earth of size 10 degree by 10 degree. On the other hand, there is the grid with
+Since the data is of very high resolution, and the total area of the window is large, this is a Big Data problem, the data to process does not fit into the RAM of the computer. On the one hand there are a set of data files, corresponding to rectangular patches of the earth of size 10 degree by 10 degree. On the other hand, there is the grid with many smaller, and some large
 %% expr{length(dhs.grid)}
-areas.  When an area covers multiple data files the conceptually easiest way to calculate a mean would be to use first use the function «crop()« to cut out the parts of the data files covered by the area at hand, and then use the function «merge()« to stitch these together to a single area and then proceed as usual, applying the functions «values()« and «mean()« to get the desired result. This process works only as long as the areas to be stitched together are small. To be able to process large areas a more complex algorithm is required, an algorithm that produces statistics for each part separately and then uses the parts to calculate a weighted mean. This is what «temporal.loss.directly.from.possible.multiple.files()« and its companion «average.coverage.over.time.directly.from.single.file()« accomplished (the word ``directly'' refers to that the algorithm does this without merging the partial areas to a single large area first).
+areas. When an area covers multiple data files the conceptually easiest way to calculate a mean would be to use first use the function «crop()« to cut out the parts of the data files covered by the area at hand, and then use the function «merge()« to stitch these together to a single area and then proceed as usual, applying the functions «values()« and «mean()« to get the desired result. This process works only as long as the areas to be stitched together are small. To be able to process large areas a more complex algorithm is required, an algorithm that produces statistics for each part separately and then uses the parts to calculate a weighted mean. This is what «temporal.loss.directly.from.possible.multiple.files()« and its companion «average.coverage.over.time.directly.from.single.file()« accomplished (the word ``directly'' refers to that the algorithm does this without merging the partial areas to a single large area first).
 
 To efficiently use these, the size of each area is computed, and all areas are classified by their size and each size-class is treated differently: the larger the areas in the size class, the more agressive parallelisation is applied (the largest areas are handled sequentially). In addition to this, parts of «average.coverage.over.time.directly.from.single.file()« is also parallelised in a way that takes the size of the partial area into account, but only on operating systems that support forking of processes, ie. Linux and MacOS.
 
@@ -382,6 +371,11 @@ Calculating the loss of tree coverage over time requires use of both the coverag
 % The core functionality here is really the first part, taking the mean is simple enough.
 
 % Start with a helper function that gets the data into RAM.
+
+\section{Efficient implementation}
+\label{sec:effic-impl}
+
+
 
 <<get.raster>>=
 ## make sure the files are available locally
@@ -525,17 +519,18 @@ average.coverage.over.time.directly.from.single.file.fast <- function(
   }
 
   average.coverage.per.year <- sapply(my.years, my.f)
-  names(average.coverage.per.year) <- paste0("t", my.years)
+    names(average.coverage.per.year) <- paste0("t", my.years)
+    size = round(geosphere::areaPolygon(polygon)/1e6, 2)
 
   globallivingconditions::my.log.f(
      paste(Sys.time(), "Ready with temporal loss for",
-       "a polygon of size", round(geosphere::areaPolygon(polygon)/1e6), "Km^2"),
+       "a polygon of size", size, "Km^2"),
      "deforestation.log")
 
   rm(polygon, my.cover.file, my.loss.file, coverage); gc(FALSE)
 
   list(
-    size = size,
+    size,
     coverage = c(t0 = average.coverage.at.t0, average.coverage.per.year)
   )
 }
@@ -722,192 +717,6 @@ split_polygon_by_extents_sp <- function(poly,
 
   out
 }
-
-## temporal.loss.directly.from.possible.multiple.files <- function(index,
-##       deforestation.path, ...) {
-
-##     ## This version is for smaller polygons, less than 5k Km^2
-
-##     ## check if stats for this polygon are already calculated.
-##     if(exists("temporal.loss")) {
-##         hit <- match(names(dhs.grid)[index], temporal.loss$region)
-##         if(is.na(hit) == FALSE){
-##             return(temporal.loss[hit, ])
-##         }
-##     }
-    
-##     ## index refers to dhs.grid
-##     polygon <- dhs.grid[index]
-    
-##     my.bbox <- sp::bbox(polygon)
-##     my.cover.files <- file.name.from.bbox.f(
-##         bbox = my.bbox, layer = "treecover2000")
-##     my.loss.files <- file.name.from.bbox.f(
-##         bbox = my.bbox, layer = "lossyear")
-##     polygon.size <- geosphere::areaPolygon(polygon)
-    
-##     globallivingconditions::my.log.f(paste(Sys.time(),
-##          "in temporal.loss.directly.from.possible.multiple.files()",
-##          "working with index =", index,
-##          "region name:", names(dhs.grid)[index],
-##          "About to iterate over", length(my.cover.files),
-##          "cover files to produce data about a polygon of size:",
-##          polygon.size),
-##          "deforestation.log")
-         
-##     fetch.raster(c(my.cover.files, my.loss.files),
-##                  deforestation.path = deforestation.path, ...)
-
-##     if(length(my.cover.files) > 1) {
-
-##         my.raster.stats <- sapply(1:length(my.cover.files), function (i) {
-
-##             globallivingconditions::my.log.f(
-##                 paste(Sys.time(), "Starting to work with cover file", i),
-##                 "deforestation.log")
-            
-##             average.coverage.over.time.directly.from.single.file.fast(
-##                 polygon = polygon, my.cover.file = my.cover.files[i],
-##                 my.loss.file = my.loss.files[i],
-##                 deforestation.path = deforestation.path)
-##         }, simplify = FALSE)
-
-##         ## If any element is NULL remove it
-##         these.are.null <- which(sapply(my.raster.stats, is.null))
-##         if(length(these.are.null) > 0) {
-##             ## assume not all of them are null
-##             my.raster.stats <- my.raster.stats[-these.are.null]
-##         }
-
-##         globallivingconditions::my.log.f(
-##           paste(Sys.time(), "my.raster.stats are ready for index", index), 
-##            "deforestation.log") 
-        
-##         ## if there are still more than one element, then create a
-##         ## weighted mean
-##         if(length(my.raster.stats) > 1) {
-##             weights <- as.vector(prop.table(unlist(sapply(seq(from = 1,
-##                              to = length(my.raster.stats)), function(i) {
-##                                  my.raster.stats[[i]][1] }))))
-##             ## restructure so that we don't need to know the number of
-##             ## tiff-files were used
-##             my.data <- Reduce(cbind, sapply(1:length(my.raster.stats),
-##              function(i) { my.raster.stats[[i]][[2]] }, simplify = FALSE))
-##             weighted.means <- sapply(1:nrow(my.data), function(i) {
-##                 round(weighted.mean(x = unlist(my.data[i, ]),
-##                                     w = weights), 16)
-##             })
-##             names(weighted.means) <- paste0("t", 0:(length(
-##                                                      weighted.means)-1))
-##             my.raster.stats <- list(size = sum(unlist(sapply(seq(from = 1,
-##                             to = length(my.raster.stats)), function(i) {
-##                                 my.raster.stats[[i]][1] }))),
-##                             coverage = weighted.means)
-##         } else {
-##             ## just flatten
-##             my.raster.stats <- my.raster.stats[[1]]
-##         }
-##     } else {
-##         my.raster.stats <- average.coverage.over.time.directly.from.single.file.fast(
-##             polygon = polygon, my.cover.file = my.cover.files,
-##             my.loss.file = my.loss.files, deforestation.path)
-##     }
-##     absolute.loss.per.year <- sapply(1:(length(my.raster.stats$coverage)-1),
-##        function(i) { my.raster.stats$coverage[["t0"]] -
-##                          my.raster.stats$coverage[[paste0("t", i)]] })
-##     temporal.loss <- cbind(data.table::data.table(
-##                region = names(dhs.grid)[index],
-##                size = geosphere::areaPolygon(polygon),
-##                coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
-##                t(data.frame(absolute.loss.per.year)))
-##     globallivingconditions::my.log.f(paste(Sys.time(), "Ready with",
-##           "temporal loss for region", names(dhs.grid)[index]),
-##           "deforestation.log")
-##     return(temporal.loss)
-## }
-
-## temporal.loss.for.multiple.areas.from.a.single.grid.cell <- function(index,
-##                                                 deforestation.path, ...) {
-##     ## if index is a vector, be smart, otherwise just call (what?, maybe
-##     ## temporal.loss.directly.from.possible.multiple.files()?
-    
-##     ## needs: dhs.grid
-##     ## calls: file.name.from.bbox.f
-##     ## calls with ... : fetch.raster(my.files, deforestation.path, verbose = FALSE)
-
-##     ## Try to be pure, only read _functions_ from the global environment,
-##     ## not variables.
-
-##     globallivingconditions::my.log.f(paste(Sys.time(),
-##          "in temporal.loss.for.multiple.areas.from.a.single.grid.cell()",
-##          "found",
-##          "deforestation.path to be", deforestation.path),
-##          "deforestation.log")
-
-##     globallivingconditions::my.log.f(paste(Sys.time(),
-##       "temporal.loss.for.multiple.areas.from.a.single.grid.cell called",
-##       "with a vector argument", paste(index, collapse = ", ")),
-##       "deforestation.log")
-##     if(length(index) == 1) {
-##         globallivingconditions::my.log.f(paste(Sys.time(),
-##          "Error: temporal.loss.for.multiple.areas.from.a.single.grid.cell",
-##          "called with a scalar argument", index), "deforestation.log")
-##         return(NULL)
-##     }
-##     ## Verify that a single grid cells covers multiple areas.
-##     my.cover.files <- sapply(index, function(i) {
-##         file.name.from.bbox.f(bbox = sp::bbox(dhs.grid[i]),
-##                               layer = "treecover2000")
-##     })
-##     if(length(table(my.cover.files)) > 1) {
-##       globallivingconditions::my.log.f(paste(Sys.time(),
-##         "Error: temporal.loss.for.multiple.areas.from.a.single.grid.cell",
-##         "called with a vector argument but not all cover files are",
-##         "identical", paste(index, collapse = ", ")), "deforestation.log")
-##         return(NULL)
-##     }
-##     my.loss.files <- file.name.from.bbox.f(bbox = sp::bbox(
-##                                  dhs.grid[index[1]]), layer = "lossyear")
-##     fetch.raster(c(my.cover.files, my.loss.files),
-##                  deforestation.path = deforestation.path, ...)
-    
-##     ## load the grid cells (only meta data is loaded)
-##     my.cover.raster <- raster::raster(paste0(deforestation.path,
-##                                              my.cover.files[1]))
-##     my.loss.raster <- raster::raster(paste0(deforestation.path,
-##                                             my.loss.files[1]))
-
-##     ## Create my.raster.stats in a way that does not require crop()
-##     ## my.cover.files is guaranteed to be a single scalar.
-##     ## We pass the raster pointer instead of the file names to avoid
-##     ## having to read metadata thousands of times for the same tif file.
-
-##     my.f <- function(i) {
-##         polygon <- dhs.grid[i]
-##         my.raster.stats <- average.coverage.over.time.directly.from.single.file.pointer.fast(polygon,
-##                    my.cover.raster, my.loss.raster)
-##         absolute.loss.per.year <- sapply(1:(length(
-##             my.raster.stats$coverage)-1), function(i) {
-##                 my.raster.stats$coverage[["t0"]] -
-##                     my.raster.stats$coverage[[paste0("t", i)]] })
-##         globallivingconditions::my.log.f(paste(Sys.time(),
-##               "Ready with temporal loss for area", names(dhs.grid)[i],
-##               "size", my.raster.stats$size/1e6, "Km^2"),
-##                  "deforestation.log")    
-##         temporal.loss <- cbind(data.table::data.table(
-##                                                region = names(
-##                                                    dhs.grid)[i],
-##                                                my.raster.stats$size,
-##                          coverage.at.t0 = my.raster.stats$coverage[["t0"]]),
-##                                t(data.frame(absolute.loss.per.year)))
-##     }
-    
-##     results <- sapply(index, my.f, simplify = FALSE)
-##     ## rm(my.loss.raster, my.cover.raster);
-##     trash <- gc(verbose = FALSE)
-##     raster::removeTmpFiles(h=0)
-##     return(results)
-## }
 
 ## Define a new version of temporal.loss.non.forking.version()
 ## which takes the grid as an argument.
@@ -2551,6 +2360,115 @@ ggplot(temporal.loss.sf) +
     name = "Coverage %"
   ) +
   theme_minimal()
+
+@
+
+<<merge.country.data>>=
+library(globallivingconditions)
+## Step 1 classify country.
+## The regions based on DHS availability are named using the three digit iso.3166 code,
+## And the other regions are named using the three letters iso.3166 code.
+## Extract the first parts, classify in string or numeric and deal with each of the two classes separately
+
+classify.country.1 <- sapply(strsplit(temporal.loss.sf$region, ".", fixed = TRUE), function(x) { x[[1]] })
+## Create a map that can be applied like this:
+## country <- iso.3166$String[my.map]
+## The map must thus have the same length as classify.country.1, and contain the index in iso.3166 for the correct country.
+my.map.1 <- match(classify.country.1, as.character(iso.3166$numeric))
+my.map.2 <- match(classify.country.1, iso.3166$String.code)
+## ifelse() is clever enough to weave the two vectors correctly
+my.map <- ifelse(is.na(my.map.1), my.map.2, my.map.1)
+temporal.loss.sf$country <- iso.3166$String[my.map]
+
+## Add country level variables
+library(wbstats); library(data.table)
+library(globallivingconditions)
+## Use the WB package to obtain data
+## maybe use "gni.constant.international.2017" = "NY.GNP.PCAP.PP.KD",
+## instead of gni.atlas.current.dollar
+
+my_indicators = c("gni.atlas.current.dollar" = "NY.GNP.PCAP.CD",
+                  "percent.goods.and.services.percent.of.gdp" = "NE.EXP.GNFS.ZS",
+                  "agriculture.forestry.percent.of.gdp" = "NV.AGR.TOTL.ZS",
+                  "population.15.64" = "SP.POP.1564.TO"
+                  )
+my_countries <- iso.3166$String.code[match(unique(temporal.loss.sf$country), iso.3166$String)]
+
+## The world bank does not have data for Western Sahara (ESH), so don't ask for it.
+my_countries <- setdiff(my_countries, "ESH")
+
+my.log.f(paste(Sys.time(), "indicators =", paste(my_indicators, collapse = ", "),
+               "countries =", paste(my_countries, collapse = ", ")))
+
+gdp.wb <- wb_data(my_indicators, country = my_countries, start_date = 1999, end_date = 2024)
+setDT(gdp.wb)
+gdp.wb[, year := as.integer(date), ]
+gdp.wb <- gdp.wb[, list(country, raw.year, gni.atlas.current.dollar, percent.goods.and.services.percent.of.gdp,
+                        agriculture.forestry.percent.of.gdp, population.15.64), ]
+setkey(gdp.wb, country, raw.year)
+
+## make a non-geometric long version of temporal loss to merge with the country level data.
+library(data.table)
+
+## The sizes for country does not quite fit my expectations.
+## Sure, here "size" is defined as "number of 'squares' defined using longitude and latitude, which makes
+## the size in square meters vary depending on latitude, but still Belize is too large in comparison to Bangladesh
+
+## I can create the actual size of each land, and of each polygon in the grid. Perhaps I have to do that.
+
+temporal.loss.sf$area_m2 <- as.numeric(st_area(st_transform(temporal.loss.sf, 8857)))
+## size.per.country <- temporal.loss.sf[year == 2001, list(size = sum(area_m2)), by = country]
+
+dt <- as.data.table(sf::st_drop_geometry(temporal.loss.sf))
+
+## wide -> long for the time-series columns
+long <- melt(
+  dt,
+  measure.vars = patterns("^accumulated\\.forest\\.loss\\.(200[1-9]|201[0-9]|202[0-3])$"),
+  variable.name = "year",
+  value.name = "accumulated_forest_loss",
+  variable.factor = FALSE
+)
+
+## extract numeric year from column name
+long[, year := as.integer(sub("^accumulated\\.forest\\.loss\\.", "", year))]
+
+## prepare merging
+setkey(long, country, year)
+setkey(gdp.wb, country, year)
+
+full.dt <- merge(long, gdp.wb)
+
+accumulated.loss.per.country <- full.dt[,
+  .(loss.in.percent = round(weighted.mean(accumulated_forest_loss, w = area_m2), 3)),
+  by = list(country, year)]
+
+size.per.country <- full.dt[year == 2001, list(area.km2 = round(sum(area_m2)/1e6)), by = country]
+
+forest.coverage.at.t0.per.country <- full.dt[year == 2001, list(forest.coverage.year.2000 = round(weighted.mean(forest.coverage.at.2000), 2)), by = country]
+
+country.stats <- merge(accumulated.loss.per.country, size.per.country)
+country.stats[, loss.in.km2 := round(loss.in.percent/100 * area.km2), ]
+setkey(country.stats, country, year)
+
+country.stats <- merge(country.stats, gdp.wb)
+country.static.stats <- merge(size.per.country, forest.coverage.at.t0.per.country)
+
+save(country.stats, country.static.stats, file = "contry_stats.RData")
+
+## use km^2 instead of m^2
+full.dt[, area.km2 := area_m2/1e6, ]
+
+## divide by 100 because accumulated_forest_loss is in per cent
+full.dt[, loss.km2 := area.km2 * accumulated_forest_loss / 100, ]
+
+## round
+full.dt$forest.coverage.at.2000 <- round(full.dt$forest.coverage.at.2000, 2)
+full.dt$accumulated_forest_loss <- round(full.dt$accumulated_forest_loss, 2)
+full.dt$loss.km2 <- round(full.dt$loss.km2, 2)
+
+final.year <- full.dt[year == 2023, ]
+setorder(final.year, accumulated_forest_loss, decreasing = TRUE)
 
 @ 
 
