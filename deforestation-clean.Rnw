@@ -83,6 +83,14 @@ if(file.exists("/media/sf_Our_data")) {
     gis.path.sf <- paste0(server.common, gis.path.sf.common.path)    
 }
 
+if(file.exists("~/mnt/poverty/media/sf_Our_data")) {
+    server.common <- paste0("~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/",
+      "University of Gothenburg/")
+    deforestation.path <- paste0(server.common,
+                                 deforestation.common.path)
+    gis.path.sf <- paste0(server.common, gis.path.sf.common.path)    
+}
+
 if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
     deforestation.path <- paste0("/mimer/NOBACKUP/groups/",
                                  "globalpoverty1/hans/Deforestation/")
@@ -1315,7 +1323,7 @@ dir.create(gis.path.sf, showWarnings = FALSE, recursive = TRUE)
 
 library(globallivingconditions) ## iso.3166 and my.log.f()
 
-m49 <- read.csv("~/src/dhsharmonisation/inst/M49.csv")
+m49 <- read.csv(system.file("M49.csv", package="globallivingconditions"))
 south.america.letter.codes.tmp <- m49$ISO.alpha3.Code[which(m49$Sub.region.Name == "Latin America and the Caribbean")]
 ## Discard some small islands.
 small.islands <- c("AIA", "ATG", "ABW", "BHS", "BRB", "BES", "VGB", "CYM", "CUW", "DMA", "GLP", "MTQ", "MSR", "BLM", "KNA", "LCA", "MAF", "VCT", "SXM", "TCA", "VIR", "BVT", "FLK", "SGS")
@@ -2333,20 +2341,7 @@ saveRDS(temporal.loss.sf, file = "temporal.loss.sf.RDS")
 
 @
 
-<<forestation, fig.cap = "Forestation in year 2000.", dpi = 400, fig.width=7, fig.height=3>>=
-library(sf); library(ggplot2)
-ggplot(temporal.loss.sf) +
-  geom_sf(aes(fill = forest.coverage.at.2000), color = NA) +   ## no borders
-  scale_fill_gradientn(
-    colours = rev(terrain.colors(256)),
-    limits = c(0, 100),
-    name = "Coverage %"
-  ) +
-  theme_minimal()
-
-@
-
-<<merge.country.data>>=
+<<get.country.data>>=
 library(globallivingconditions)
 ## Step 1 classify country.
 ## The regions based on DHS availability are named using the three digit iso.3166 code,
@@ -2381,15 +2376,19 @@ my_countries <- iso.3166$String.code[match(unique(temporal.loss.sf$country), iso
 my_countries <- setdiff(my_countries, "ESH")
 
 my.log.f(paste(Sys.time(), "indicators =", paste(my_indicators, collapse = ", "),
-               "countries =", paste(my_countries, collapse = ", ")))
+               "countries =", paste(my_countries, collapse = ", ")),
+         "deforestation.log")
 
 gdp.wb <- wb_data(my_indicators, country = my_countries, start_date = 1999, end_date = 2024)
 setDT(gdp.wb)
 gdp.wb[, year := as.integer(date), ]
-gdp.wb <- gdp.wb[, list(country, raw.year, gni.atlas.current.dollar, percent.goods.and.services.percent.of.gdp,
+gdp.wb <- gdp.wb[, list(country, year, gni.atlas.current.dollar, percent.goods.and.services.percent.of.gdp,
                         agriculture.forestry.percent.of.gdp, population.15.64), ]
-setkey(gdp.wb, country, raw.year)
+setkey(gdp.wb, country, year)
 
+@
+
+<<merge.country.data>>=
 ## make a non-geometric long version of temporal loss to merge with the country level data.
 library(data.table)
 
@@ -2451,7 +2450,133 @@ full.dt$accumulated_forest_loss <- round(full.dt$accumulated_forest_loss, 2)
 full.dt$loss.km2 <- round(full.dt$loss.km2, 2)
 
 final.year <- full.dt[year == 2023, ]
-setorder(final.year, accumulated_forest_loss, decreasing = TRUE)
+setorder(final.year, -accumulated_forest_loss)
+
+@ 
+
+<<africa.borders>>=
+library(globallivingconditions) ## iso.3166 and my.log.f()
+m49 <- read.csv(system.file("M49.csv", package="globallivingconditions"))
+
+africa.letter.codes <- m49$ISO.alpha3.Code[m49$Region.Name == "Africa"]
+
+## gadm uses the letter codes, but globallivingconditions uses the digit codes.
+## Not all entities are proper countries, so use na.omit to filter out those not existing in iso.3166
+africa.numeric.codes <- as.vector(na.omit(iso.3166$numeric[match(africa.letter.codes, iso.3166$String.code)]))
+
+## Do not flood the gadm server with requests, run this sequentially
+borders.with.GPS <- sapply(africa.letter.codes, function(x) {
+    my.borders.inner.f(x, gis.path.sf, absolute.log.filename = "deforestation.log", level = 0)
+}, simplify = FALSE)
+names(borders.with.GPS) <- africa.numeric.codes
+
+my.log.f(paste(Sys.time(), "Borders collected"), "deforestation.log")
+
+## make a single sf object
+africa.borders <- Reduce(rbind, borders.with.GPS)
+
+@
+
+<<all.borders>>=
+all.borders <- Reduce(rbind, list(south.east.asia.border, south.america.border, africa.borders))
+@
+
+<<forestation, fig.cap = "Average forestation the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=7, fig.height=3>>=
+library(sf); library(ggplot2)
+ggplot(temporal.loss.sf) +
+  geom_sf(aes(fill = forest.coverage.at.2000), color = NA) +   ## no borders
+  scale_fill_gradientn(
+    colours = rev(terrain.colors(256)),
+    limits = c(0, 100),
+    name = "Coverage %"
+  ) +
+    theme_minimal() +
+    geom_sf(data = all.borders, ## Country borders
+          fill = NA,
+          color = "black",
+          linewidth = 0.05) + 
+  theme(
+      legend.position = "top",
+      legend.direction = "horizontal"
+  )
+
+@
+
+<<de-forestation, fig.cap = "Average deforestation between 2000-2023 in the administrative areas. Country borders added.", dpi = 400, fig.width=7, fig.height=3>>=
+library(sf); library(ggplot2)
+ggplot(temporal.loss.sf) +
+  geom_sf(aes(fill = accumulated.forest.loss.2023), color = NA) +   ## no borders from the polygons
+    scale_fill_viridis_c(
+    name = "Forest Loss (%)",   # <-- legend title
+    option = "H",               # the palette "Turbo"
+    direction = 1               # use -1 to reverse
+  ) +
+  theme_minimal() +
+      geom_sf(data = all.borders, ## Country borders
+          fill = NA,
+          color = "white",
+          linewidth = 0.1) + 
+  theme(
+      legend.position = "top",
+      legend.direction = "horizontal"
+  )
+
+@
+
+<<my.crop.f>>=
+my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
+
+  old <- sf::sf_use_s2()
+  on.exit(sf::sf_use_s2(old), add = TRUE)
+  sf::sf_use_s2(FALSE)
+
+  bbox <- st_bbox(
+    c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax),
+    crs = st_crs(my.sf)
+  )
+
+  st_crop(my.sf, bbox)
+}
+
+@
+
+<<deforestation-in-SA, fig.cap = "Deforestation in the administrative areas during 2000-2023 in central South America. Country borders added.", dpi = 400, fig.width = 7, fig.height = 7>>=
+ggplot(my.crop.f(-75, -30, -40, 0, temporal.loss.sf)) +
+  geom_sf(aes(fill = accumulated.forest.loss.2023), color = NA) +   ## no borders
+    scale_fill_viridis_c(
+    name = "Forest Loss (%)",   # <-- legend title
+    option = "H",               # the palette "Turbo"
+    direction = 1               # use -1 to reverse
+  ) +
+  theme_minimal() +
+      geom_sf(data = my.crop.f(-75, -30, -40, 0, south.america.border),
+          fill = NA,
+          color = "white",
+          linewidth = 0.3) + 
+  theme(
+      legend.position = "top",
+      legend.direction = "horizontal"
+  )
+
+@ 
+
+<<eval=FALSE>>=
+ggplot(foo) +
+  geom_sf(aes(fill = accumulated.forest.loss.2023), color = NA) +   ## no borders
+    scale_fill_viridis_c(
+    name = "Forest Loss (%)",   # <-- legend title
+    option = "H",               # the palette "Turbo"
+    direction = 1               # use -1 to reverse
+  ) +
+  theme_minimal() +
+      geom_sf(data = my.crop.f(-75, -30, -40, 0, south.america.border),
+          fill = NA,
+          color = "white",
+          linewidth = 0.3) + 
+    theme(
+        legend.position = "top",
+        legend.direction = "horizontal"
+    )
 
 @ 
 
