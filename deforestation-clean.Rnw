@@ -1292,27 +1292,6 @@ st_crs(africa_extent) <- st_crs(sfdf)
 
 @ 
 
-<<coverage-t0, fig.cap = "Forest coverage per local area in year 2000. Africa. Only countries with DHS data included.", fig.width=6.45, fig.height=6.45, eval = FALSE>>=
-## Select polygons that intersects with the polygons mainland africa and Madagascar
-## africa_extent is a single object but contains two polygons, which makes sel 
-## have 2 columns
-sel <- st_intersects(sfdf, africa_extent, sparse = FALSE)
-these.polygons.in.africa <- which(apply(sel, 1, any))
-
-plot(
-  sfdf[these.polygons.in.africa, "coverage.at.t0"],
-  breaks = seq(0, 100, length.out = 101),
-  pal = function(n) rev(terrain.colors(n)),
-  lwd = 0.05,
-  key.pos = 4,      # legend on the right
-  key.length = 0.8,
-  main = "Forest coverage at year 2000",
-  reset = FALSE
-)
-plot(st_geometry(africa_extent), add = TRUE)
-
-@
-
 \section{Download borders for administrative areas}
 \label{sec:download-borders}
 
@@ -1455,29 +1434,6 @@ my.log.f(paste(Sys.time(), "Selection created created"), "deforestation.log")
 
 @
 
-<<coverage-t0-south-america, fig.cap = "Forest coverage per local area in year 2000. Latin America and the Caribbean. Only areas with DHS data included.", fig.width=6.45, fig.height=6.45>>=
-
-# plot the big outline first (no fill)
-plot(st_geometry(south.america.union),
-     col = NA,          # no fill
-     border = "black",  # outline color
-     lwd = 1.0,
-     main = "Forest coverage at year 2000",
-     reset = FALSE
-)
-
-# then add the coverage layer
-plot(sfdf[these.polygons.are.in.south.america, "coverage.at.t0"],
-     breaks = seq(0, 100, length.out = 101),
-     pal = function(n) rev(terrain.colors(n)),
-     lwd = 0.05,
-     add = TRUE,
-     key.pos = 4,
-     key.length = 0.8
-)
-
-@
-
 <<south.east.asia.prepare>>=
 library(globallivingconditions) ## iso.3166 and my.log.f()
 south.east.asia.letter.codes <- m49$ISO.alpha3.Code[m49$Sub.region.Name %in% c("Southern Asia", "South-eastern Asia")]
@@ -1507,243 +1463,6 @@ my.log.f(paste(Sys.time(), "Union created"), "deforestation.log")
 
 these.polygons.are.in.south.east.asia <- st_intersects(sfdf, south.east.asia.union, sparse = FALSE)[,1]
 my.log.f(paste(Sys.time(), "Selection created created"), "deforestation.log")
-
-@
-
-<<coverage-t0-south-east-asia, fig.cap = "Forest coverage per local area in year 2000. South East Asia. Only areas with DHS data included.", fig.width=6.45, fig.height=6.45>>=
-
-# plot the big outline first (no fill)
-plot(st_geometry(south.east.asia.union),
-     col = NA,          # no fill
-     border = "black",  # outline color
-     lwd = 1.0,
-     main = "Forest coverage at year 2000",
-     reset = FALSE
-)
-
-# then add the coverage layer
-plot(sfdf[these.polygons.are.in.south.east.asia, "coverage.at.t0"],
-     breaks = seq(0, 100, length.out = 101),
-     pal = function(n) rev(terrain.colors(n)),
-     lwd = 0.05,
-     add = TRUE,
-     key.pos = 4,
-     key.length = 0.8
-)
-
-@ 
-
-To control for the sampling noise, include the average education in years for the persons that were between 24 and 44 years old in year 2000. This group is stable through the study period (at the end the oldes are 65 years old, still included if alive) We here make use of the fact the education is a stable feature in the sense it can not be lost. It can be improved, but that should be so uncommon that it should not affect the analyses at all. By including this average, the model can ascribe some part of the variation in the outcome over time in the same area to variation in the educational average, which means that the persons surveyed differed, and reduce the problem of sampling noise.
-
-Merge the results with the DHS data on living conditions.
-
-<<merge.results, eval=FALSE>>=
-library(data.table)
-my.dt <- readRDS("reduced.RDS")
-## Rename column "region" to "superClusterID" in temporal loss
-colnames(temporal.loss)[match("region", colnames(temporal.loss))] <- "superClusterID"
-data.table::setkey(my.dt, superClusterID)
-data.table::setkey(temporal.loss, superClusterID)
-my.dt.with.temporal.loss <- merge(my.dt, temporal.loss)
-
-## add loss at year of interview
-my.dt.with.temporal.loss$loss.at.year.of.interview = NA
-for(t in my.years) {
-    these.cases <- which(my.dt.with.temporal.loss$year.of.interview ==
-                         2000 + t)
-    this.column.name <- paste0("V", t)
-    foo <- my.dt.with.temporal.loss[these.cases, this.column.name,
-                                    with = FALSE]
-    my.dt.with.temporal.loss$loss.at.year.of.interview[these.cases] <-
-        foo[[this.column.name]]
-}
-
-dep.subset.f <- function(var.name) {
-    ## To control for the sampling noise, include the average education 
-    ## in year for the persons that were between 24 and 44 years old in 
-    ## year 2000. This group is stable through the study period (at the
-    ## end the oldes are 65 years old, still included if alive)              
-    ## We here make use of the fact the education is a stable feature in
-    ## the sense it can not be lost. It can be improved, but that should
-    ## be so uncommon that it should not affect the analyses at all.
-    ## By including this average, the model can ascribe some part of the
-    ## variation in the outcome over time in the same area to variation
-    ## in the educational average, which means that the persons surveyed
-    ## differed, and reduce the problem of sampling noise.
-
-    ## For every gadm area and year of interview, select the persons in
-    ## the right age interval (24-44 in 2000), so
-    ## youngest = year.of.interview - 2000 + 24
-    ## oldest = year.of.interview - 2000 + 444
-
-    my.dt.with.temporal.loss$dep.var <- my.dt.with.temporal.loss[[var.name]]
-
-    foo <- my.dt.with.temporal.loss[, list(
-        year.of.interview,
-	age,
-	education.in.years,
-        superClusterID,
-        source), ]
-    bar <- foo[age >= year.of.interview - 2000 + 24 & age <=
-               year.of.interview - 2000 + 44, ]
-    ## For every gadm.area and source, calculate the average years
-    ## of education.
-    educational.data <- bar[, list(
-        average.years.of.education.for.the.1956.1976.cohort = mean(
-            education.in.years, na.rm = TRUE)),
-        by = list(superClusterID, source)]
-
-    ## select cases with non-missing value on the deprivation after
-    ## calculating the educational data, since food deprivation is
-    ## only measured on children below 5 and education is only
-    ## calculate for adults above 23.
-    these <- which(is.na(my.dt.with.temporal.loss[[var.name]]) == FALSE &
-     is.na(my.dt.with.temporal.loss$loss.at.year.of.interview) == FALSE)
-
-    ## if data collection happened over two different years, then there
-    ## are two separate lines. Merge these and take the mean year.
-
-    output.dt <- my.dt.with.temporal.loss[these, list(
-        deprived = sum(length(which(dep.var))),
-        raw.year = round(mean(year.of.interview)),
-        coverage.at.t0 = unique(coverage.at.t0),
-        loss.at.year.of.interview = mean(loss.at.year.of.interview),
-        not.deprived = sum(.N) - sum(length(which(dep.var))),
-        country = unique(globallivingconditions::iso.3166$String[
-                     match(country.code.ISO.3166.alpha.3,
-                           globallivingconditions::iso.3166$numeric)])),
-        by = list(superClusterID, source)]
-    
-    output.dt[, year := scale(raw.year), ]
-    setkey(output.dt, country, raw.year)
-    output.dt.1 <- merge(output.dt, country.data)
-    output.dt.1$country <- factor(output.dt.1$country)
-    output.dt.1[, GDP.z := scale(GDP), ]
-
-    setkey(output.dt.1, superClusterID, source)
-    setkey(educational.data, superClusterID, source)    
-    output.dt.2 <- merge(output.dt.1, educational.data)
-
-    output.dt.2[, average.years.of.education.for.the.1956.1976.raw :=
-                average.years.of.education.for.the.1956.1976.cohort, ]    
-    output.dt.2[, average.years.of.education.for.the.1956.1976.cohort :=
-         scale(average.years.of.education.for.the.1956.1976.cohort), ]
-
-    output.dt.2$superClusterID <- factor(output.dt.2$superClusterID)
-
-    ## If some region where present in foo, but not in output.dt.2,
-    ## make a note in the log with these regions.
-    if(length(output.dt.2[is.na(
-        average.years.of.education.for.the.1956.1976.cohort) == FALSE,
-        unique(superClusterID), ]) < length(unique(foo$superClusterID))) {
-
-        these <- which(is.na(match(unique(foo$superClusterID),
-                                   output.dt.2[is.na(
-            average.years.of.education.for.the.1956.1976.cohort) == FALSE,
-            unique(superClusterID), ])))
-
-        ## my.log.f(paste(Sys.time(), "Some regions lacked enough data on",
-        ##                "education for the cohort"), "deforestation.log")
-        ## my.log.f(paste(foo$superClusterID[these], collapse = " "),
-        ##          "deforestation.log")
-    }
-    return(output.dt.2)
-}
-
-my.deps <- c("severe.shelter.deprivation", "severe.water.deprivation",
-             "severe.food.deprivation", "severe.sanitation.deprivation")
-data.sets <- sapply(my.deps, dep.subset.f, simplify = FALSE)
-save(data.sets, my.dt.with.temporal.loss,
-     file = "data.sets_and_my.dt.with.temporal.loss.RData")
-rm(my.dt, my.dt.with.temporal.loss)
-gc(verbose=FALSE)
-
-@
-
-\section{Shelter deprivation}
-Create a data set suitable for regression with shelter deprivation as the dependent variable.
-
-
-<<continued.for.the.extract, echo = TRUE, eval=FALSE>>=
-test.dt <- data.sets[[match("severe.shelter.deprivation", my.deps)]]
-@
-
-\subsection{Coverage for shelter}
-Show the areas for which we have complete data for shelter deprivation, and mark areas where education is missing and where there are too few measurements.
-
-<<coverage-shelter, fig.cap = "Coverage for education in the shelter deprivation dataset. Green = multiple measurements available, Red = a single measurement available, White = no measurement available.", dev = "png", dpi = 200, eval = FALSE>>=
-plot(africa)
-missing.stats <- test.dt[is.na(
-    average.years.of.education.for.the.1956.1976.cohort) == FALSE,
-    length(unique(raw.year)), by = superClusterID]
-these <- missing.stats[V1 > 1, match(superClusterID, names(dhs.grid))]
-plot(dhs.grid[these], col = "green", add = TRUE)
-these <- missing.stats[V1 == 1, match(superClusterID, names(dhs.grid))]
-plot(dhs.grid[these], col = "red", add = TRUE)
-my.borders <- do.call(rbind, lapply(country.codes, get.border))
-## Not sure if my.borders are the same when country.codes is a scalar or a vector.
-## This works when country codes is a scalar.
-plot(my.borders["GID_0"], col = NA, border = "red", add = TRUE)
-@ 
-
-The basic unit in the data set is a rather small administrative area, on average there are
-% expr{round(length(dhs.grid) / length(country.codes))}
-such areas in each country in the data set. For each DHS wave, area and type of deprivation, we aggregate the number of deprived persons, and the total number of surveyed persons, which in most areas gives repeated measurements. The data on deforestation and the country level variables are available for every year, and is merged to a single dataset. In addition we also use the larger top level regions in each country, and the whole country to get two baselines for the change in deprivation of time. These baselines are useful in that they make sure that the signal picked up by the regression terms for deforestation is uncorrelated to trends that are shared by local areas that differ in level of deforestation.
-
-%% Table \vref{tab:data} provides an excerpt from the data set that includes data on severe shelter deprivations, containing \Sexpr{ # nrow(test.dt)} data points about \Sexpr{ # length(unique(test.dt$superClusterID))} unique areas.
-
-<<continued.excerpt, echo = FALSE, results = "asis", eval=FALSE>>=
-library(data.table)
-set.seed(1)
-these <- sample(unique(test.dt$superClusterID), size = 3)
-foo <- test.dt[superClusterID %in% these, c("coverage.at.t0", "loss.at.year.of.interview", "GDP", "year", "superClusterID", "average.years.of.education.for.the.1956.1976.raw", "deprived", "not.deprived")]
-foo[, prop.deprived := deprived/(deprived + not.deprived), ]
-setkey(foo, superClusterID, year)
-colnames(foo) <- c("FC.T0", "DF", "GDP", "year", "area", "EduY", "D.",
-                   "N.D.", "p.D.")
-foo[, year := year * attr(year, "scaled:scale") + attr(year, "scaled:center"), ]
-## reorder the columns.
-## 1. Area identifier, "area"
-## 2. year, "year" 
-## 3. FC at t0, "FC.T0"
-## 4. Deforestation (primary independent variable), "DF"
-## 5. Primary Control variable (truly varying): Education for the reference cohort "EduY"
-## 6. Control variable(s) (only varying at the country level): "GDP"
-## 7. Outcome: deprived and not deprived, proportion deprived (to easy interpretation): "D.", "Non D.", "p.D."
-my.order <- c("area", "year", "FC.T0", "DF", "EduY", "GDP", "D.", "N.D.", "p.D.")
-my.trans.order <- match(my.order, colnames(foo))
-setDF(foo)
-bar <- foo[my.trans.order]
-
-library(xtable)
-print(xtable(bar, digits = c(rep(0, 3), rep(2, 3), 1, rep(0, 2), 2), label = "tab:data", caption = "Abbreviations: Forest Coverage at T0 ('FC.T0'), Deforestation ('DF'), Average years of education for the 1956 1976 cohort ('EduY') Deprived ('D.'), Not.Deprived ('N.D.') and Proportion deprived ('p.D.').", align = c("r", "p{5cm}", rep("r", 8))), include.rownames = FALSE, tabular.environment = "longtable", floating = FALSE, booktabs = TRUE)
-@ 
-
-Fit models
-
-<<continued.choose.optimization, eval = FALSE, echo = FALSE>>=
-library(lme4)
-bobyqa.control <- glmerControl(optimizer = c("bobyqa", "bobyqa"))
-@
-
-<<shelter-spline-fit, eval = FALSE, echo = FALSE>>=
-## library(splines)
-
-## my.fit.simple <- glmer(cbind(deprived, not.deprived) ~ bs(loss.at.year.of.interview*coverage.at.t0, df = 4) + average.years.of.education.for.the.1956.1976.cohort + year + (loss.at.year.of.interview | superClusterID) + (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) + (year | country), data = data.sets[[1]], family = binomial, control = bobyqa.control)
-
-library(gamm4)
-
-fit_g4 <- gamm4(
-  cbind(deprived, not.deprived) ~ 
-    t2(loss.at.year.of.interview, coverage.at.t0, k = c(10,10)) +
-    average.years.of.education.for.the.1956.1976.cohort +
-    year,
-  random = ~ (loss.at.year.of.interview | superClusterID) +
-            (0 + average.years.of.education.for.the.1956.1976.cohort | superClusterID) +
-            (year | country),
-  family = binomial,
-  data = data.sets[[1]]
-)
 
 @
 
@@ -1868,12 +1587,6 @@ for (i in seq_along(sp.grid@polygons)) {
 }
 
 @
-
-<<full-grid, fig.cap = "The borders of the administrative areas used.", dpi = 400, fig.width=7, fig.height=3>>=
-library(sf)
-par(mar = c(0, 0, 0, 0))
-plot(st_geometry(full.grid.sf), lwd = 0.05)
-@ 
 
 <<task.creation.2>>=
 n.cores <- parallelly::availableCores(method = c("cgroups.cpuquota", "Slurm", "system"))-1
@@ -2481,47 +2194,102 @@ africa.borders <- Reduce(rbind, borders.with.GPS)
 all.borders <- Reduce(rbind, list(south.east.asia.border, south.america.border, africa.borders))
 @
 
-<<forestation, fig.cap = "Average forestation the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=7, fig.height=3>>=
+<<properly.sized.grid.with.graticules>>=
+bb <- st_bbox(temporal.loss.sf)
+
+grat <- st_graticule(
+  x = bb,
+  crs = st_crs(temporal.loss.sf),
+  lon = seq(floor(bb["xmin"]/50)*50, ceiling(bb["xmax"]/50)*50, by = 50),
+  lat = seq(floor(bb["ymin"]/20)*20, ceiling(bb["ymax"]/20)*20, by = 20)
+)
+
+@ 
+
+
+<<full-grid, fig.cap = "The borders of the administrative areas used.", dpi = 400, fig.width=6, fig.height=2.4>>=
 library(sf); library(ggplot2)
-ggplot(temporal.loss.sf) +
-  geom_sf(aes(fill = forest.coverage.at.2000), color = NA) +   ## no borders
+## par(mar = c(0, 0, 0, 0))
+## plot(st_geometry(full.grid.sf), lwd = 0.05)
+
+ggplot() +
+    ## graticule behind polygons
+    geom_sf(data = grat, linewidth = 0.10) +
+    ## The adminiatrative borders
+    geom_sf(data = full.grid.sf, fill = NA, linewidth = 0.05) + 
+
+    ## lock extent to the bbox
+    coord_sf(
+        xlim = c(bb["xmin"], bb["xmax"]),
+        ylim = c(bb["ymin"], bb["ymax"]),
+        expand = FALSE
+    ) +
+
+  theme_minimal()
+
+@ 
+
+<<forestation, fig.cap = "Average forestation in the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
+library(sf); library(ggplot2)
+
+ggplot() +
+  # graticule behind polygons
+  geom_sf(data = grat, linewidth = 0.10) +
+
+  geom_sf(data = temporal.loss.sf,
+          aes(fill = forest.coverage.at.2000),
+          color = NA) +
+  geom_sf(data = all.borders, fill = NA, linewidth = 0.05) +
+
+  # lock extent to the bbox
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"]),
+    expand = FALSE
+  ) +
+
   scale_fill_gradientn(
     colours = rev(terrain.colors(256)),
     limits = c(0, 100),
     name = "Coverage %"
   ) +
-    theme_minimal() +
-    geom_sf(data = all.borders, ## Country borders
-          fill = NA,
-          color = "black",
-          linewidth = 0.05) + 
-  theme(
-      legend.position = "top",
-      legend.direction = "horizontal"
-  )
 
-@
-
-<<de-forestation, fig.cap = "Average deforestation between 2000-2023 in the administrative areas. Country borders added.", dpi = 400, fig.width=7, fig.height=3>>=
-library(sf); library(ggplot2)
-ggplot(temporal.loss.sf) +
-  geom_sf(aes(fill = accumulated.forest.loss.2023), color = NA) +   ## no borders from the polygons
-    scale_fill_viridis_c(
-    name = "Forest Loss (%)",   # <-- legend title
-    option = "H",               # the palette "Turbo"
-    direction = 1               # use -1 to reverse
-  ) +
   theme_minimal() +
-      geom_sf(data = all.borders, ## Country borders
-          fill = NA,
-          color = "white",
-          linewidth = 0.1) + 
   theme(
-      legend.position = "top",
-      legend.direction = "horizontal"
+    panel.grid = element_blank(),
+    legend.position = "top",
+    legend.direction = "horizontal"
   )
 
 @
+
+<<de-forestation, fig.cap = "Average deforestation between 2000-2023 in the administrative areas. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
+library(sf); library(ggplot2)
+
+ggplot() +
+  # graticule behind polygons
+  geom_sf(data = grat, linewidth = 0.10) +
+  geom_sf(data = temporal.loss.sf,
+          aes(fill = accumulated.forest.loss.2023),
+          color = NA) +
+  geom_sf(data = all.borders, fill = NA, color = "white", linewidth = 0.1) +
+
+  # lock extent to YOUR data bbox (prevents the graticule changing the limits)
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"]),
+    expand = FALSE
+  ) +
+
+  scale_fill_viridis_c(name = "Forest Loss (%)", option = "H", direction = 1) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "top",
+    legend.direction = "horizontal"
+  )
+
+@ 
 
 <<my.crop.f>>=
 my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
@@ -2577,6 +2345,94 @@ ggplot(foo) +
         legend.position = "top",
         legend.direction = "horizontal"
     )
+
+@ 
+
+<<get.gain.data>>=
+## new version helper functions that does not need layer, but uses a different base url.
+base.url.gain <- "https://gladxfer.umd.edu/users/Potapov/GLCLUC2020/Forest_height_gain_2000_2020/"
+file.name.prefix.gain <- "netgain_"
+
+url.from.file.gain.f <- function(file.name) { paste0(base.url.gain, file.name) }
+
+url.from.point.gain.f <- function(lon, lat){
+    ## Returns the url needed for this point
+    lon.first.corner <- floor(lon / 10) * 10
+    lat.first.corner <- ceiling(lat / 10) * 10
+    if(abs(lon.first.corner) > 100){
+        lon.corner <- abs(lon.first.corner)
+    } else {
+        lon.corner <- paste0("0", abs(lon.first.corner))        
+    }
+    if(abs(lon.first.corner) < 10){
+        ## longitude 0 is written 000E
+        lon.corner <- paste0("00", abs(lon.first.corner))
+    }    
+    if(lon.first.corner < 0){
+        lon.corner <- paste0(lon.corner, "W")
+    } else {
+        lon.corner <- paste0(lon.corner, "E")    
+    }
+    ## For some reason I still see values like "0100E"
+    ## that should be 100E.
+    ## Dirty hack:
+    if(nchar(lon.corner) > 4){
+        lon.corner <- substring(lon.corner, 2, 5)
+    }
+    if(abs(lat.first.corner) < 10){
+        ## latitude 0 is written 00N
+        lat.corner <- paste0("0", abs(lat.first.corner))
+    } else {
+        lat.corner <- abs(lat.first.corner)        
+    }
+    if(lat.first.corner < 0){
+        lat.corner <- paste0(lat.corner, "S")
+    } else {
+        lat.corner <- paste0(lat.corner, "N")    
+    }
+    my.file <- paste0(file.name.prefix.gain, lat.corner, "_", lon.corner, ".tif")
+    return(url.from.file.gain.f(my.file))
+}
+
+urls.from.bbox.gain.f <- function(bbox, tile_deg = 10, eps = 1e-10) {
+    ## for a given bbox, returns the necessary tiff files for forest gain
+    ## bbox is sp::bbox result: matrix with rows x,y and cols min,max
+
+  xmin <- bbox["x", "min"]
+  xmax <- bbox["x", "max"]
+  ymin <- bbox["y", "min"]
+  ymax <- bbox["y", "max"]
+
+  # Apply half-open convention by nudging max inward a hair.
+  # This makes xmax=20 belong to the tile [10,20), not [20,30).
+  xmax2 <- xmax - eps
+  ymax2 <- ymax - eps
+
+  # Handle degenerate bboxes (e.g., width 0) safely
+  if (xmax2 < xmin) xmax2 <- xmin
+  if (ymax2 < ymin) ymax2 <- ymin
+
+  # Compute tile indices (multiples of tile_deg)
+  x_starts <- seq(floor(xmin / tile_deg) * tile_deg,
+                  floor(xmax2 / tile_deg) * tile_deg,
+                  by = tile_deg)
+
+  y_starts <- seq(floor(ymin / tile_deg) * tile_deg,
+                  floor(ymax2 / tile_deg) * tile_deg,
+                  by = tile_deg)
+
+  # Convert tile start (south edge) to the NW corner latitude (ymax of tile)
+  # Tile spans [y, y+tile_deg); NW corner lat is y+tile_deg.
+  tiles <- expand.grid(xmin_tile = x_starts, ymin_tile = y_starts)
+
+  urls <- apply(tiles, 1, function(t) {
+    lon_west <- t[["xmin_tile"]]
+    lat_north <- t[["ymin_tile"]] + tile_deg
+    url.from.point.gain.f(lon = lon_west, lat = lat_north)
+  })
+
+  unique(urls)
+}
 
 @ 
 
