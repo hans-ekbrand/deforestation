@@ -35,7 +35,7 @@ opts_knit$set(root.dir = ".")
 options(scipen=999) ## Avoid scientific formating of large numbers.
 @ 
 
-Install required packages.
+%% Install required packages.
 
 <<forest.change.install.packages>>=
 required.packages <- c("httr", "data.table", "sf", "raster",
@@ -46,6 +46,10 @@ for(package in required.packages){
         install.packages(package, character.only=TRUE)
     }
 }
+library(devtools)
+install_bitbucket(repo = "hansekbrand/iwi")
+install_bitbucket(repo = "hansekbrand/DHSharmonisation", upgrade = "never", ref = "debug")
+library(globallivingconditions)
 
 @
 
@@ -69,8 +73,8 @@ deforestation.path <- "/mnt/windows/Deforestation and poverty - Forest Coverage"
 
 ## Create a smaller my.sf while debugging
 my.sf <- readRDS("my.sf.RDS")
-## only Nigeria (566) and Benin 204)
-my.sf <- my.sf[substring(my.sf$region, 1, 3) %in% c("204", "566"), ]
+## ## only Nigeria (566) and Benin 204)
+## my.sf <- my.sf[substring(my.sf$region, 1, 3) %in% c("204", "566"), ]
 
 # Return GLCLU tile names overlapping an sf/sp bbox.
 glclu_tile_names_from_bbox <- function(bbox, tile_deg = 10, eps = 1e-10) {
@@ -177,58 +181,42 @@ forest_valid_summary_fun <- function(values, coverage_fraction) {
 }
 
 ## Process one tile for one year over only intersecting polygons.
-process_one_tile_one_year <- function(tile_file, polys_sf, tile_to_poly, poly_id_col = "poly_id") {
+process_one_tile_one_year <- function(tile_file,
+                                      polys_sf,
+                                      tile_to_poly,
+                                      year,
+                                      poly_id_col = "poly_id") {
+
+  result.file.name <- paste0(tile_file, "_results.RDS")
   tile_name <- basename(tile_file)
+    
+  # try cached result
+  if (file.exists(result.file.name)) {
+    vals <- tryCatch(readRDS(result.file.name), error = function(e) NULL)
+    if (!is.null(vals)) return(vals)
+  }
+
   hit_idx <- tile_to_poly[[tile_name]]
   if (length(hit_idx) == 0) return(NULL)
+
   sub_polys <- polys_sf[hit_idx, ]
   r <- raster(tile_file)
+
   vals <- exact_extract(r, sub_polys, forest_valid_summary_fun, progress = FALSE)
+
   vals <- as.data.table(t(vals))
+  setnames(vals, c("forest", "valid"))
+
   vals[, (poly_id_col) := sub_polys[[poly_id_col]]]
-  vals[, tile_file := basename(tile_file)]
-  return(vals)
-}
+  vals[, tile_file := tile_name]
+  vals[, year := year]
 
-# Process all relevant tiles for one year in parallel.
-# yearly_dir is a directory like /path/to/GLCLU/2000/
-compute_forest_share_for_year <- function(polys_sf,
-                                          yearly_dir,
-                                          tile_to_poly,                                          
-                                          poly_id_col = "region",
-                                          workers = max(1L, future::availableCores() - 1L),
-                                          relevant_tile_names
-                                          ) {
+  # atomic write
+  tmp <- paste0(result.file.name, ".tmp")
+  saveRDS(vals, tmp)
+  file.rename(tmp, result.file.name)
 
-  stopifnot(inherits(polys_sf, "sf"))
-  if (is.null(polys_sf[[poly_id_col]])) {
-    stop("poly_id_col must exist in polys_sf")
-  }
-
-  tile_files <- file.path(yearly_dir, relevant_tile_names)
-  tile_files <- tile_files[file.exists(tile_files)]
-  if (!length(tile_files)) stop("No matching tile files found in ", yearly_dir)
-
-  oplan <- future::plan()
-  on.exit(future::plan(oplan), add = TRUE)
-  future::plan(future::multisession, workers = workers)
-
-  res_list <- future_lapply(tile_files, function(f) {
-    process_one_tile_one_year(tile_file = f, polys_sf = polys_sf, tile_to_poly, poly_id_col = poly_id_col)
-  }, future.seed = TRUE)
-
-  res <- rbindlist(res_list, use.names = TRUE, fill = TRUE)
-  if (!nrow(res)) {
-    out <- data.table(poly_tmp = polys_sf[[poly_id_col]], forest = 0, valid = 0, share = NA_real_)
-    data.table::setnames(out, "poly_tmp", poly_id_col)
-    return(out)
-  }
-
-  out <- res[, .(forest = sum(forest, na.rm = TRUE),
-                 valid  = sum(valid, na.rm = TRUE)), by = poly_id_col]
-  out[, share := fifelse(valid > 0, forest / valid, NA_real_)]
-  setorderv(out, poly_id_col)
-  out[]
+  vals
 }
 
 # Convenience wrapper for two years and net change in percentage points.
@@ -239,45 +227,74 @@ compute_forest_share_change <- function(polys_sf,
                                         poly_id_col = "region",
                                         workers = max(1L, future::availableCores() - 1L),
                                         relevant_tile_names = NULL) {
-  if (is.null(relevant_tile_names)) {
-    # safer than just using the global bbox: union of per-polygon tile sets could be used,
-    # but for one-country/admin run the global bbox is usually fine.
-    relevant_tile_names <- unique(glclu_tile_names_from_bbox(st_bbox(polys_sf)))
-  }
+    if (is.null(relevant_tile_names)) {
+                                        # safer than just using the global bbox: union of per-polygon tile sets could be used,
+                                        # but for one-country/admin run the global bbox is usually fine.
+        relevant_tile_names <- unique(glclu_tile_names_from_bbox(st_bbox(polys_sf)))
+    }
 
-  tile_geoms <- lapply(relevant_tile_names, function(tf) {
-      st_as_sfc(st_bbox_from_tile_name(tf))[[1]]
-  })
+    tile_geoms <- lapply(relevant_tile_names, function(tf) {
+        st_as_sfc(st_bbox_from_tile_name(tf))[[1]]
+    })
 
-  tiles_sf <- st_sf(
-      tile = relevant_tile_names,
-      geometry = st_sfc(tile_geoms, crs = st_crs(polys_sf))
-  )
+    tiles_sf <- st_sf(
+        tile = relevant_tile_names,
+        geometry = st_sfc(tile_geoms, crs = st_crs(polys_sf))
+    )
 
-  tile_to_poly <- st_intersects(tiles_sf, polys_sf)
-  names(tile_to_poly) <- tiles_sf$tile
-  
-  dt0 <- compute_forest_share_for_year(polys_sf, file.path(root_dir, as.character(year0)),
-                                       tile_to_poly,
-                                       poly_id_col = poly_id_col,
-                                       workers = workers,
-                                       relevant_tile_names)
+    tile_to_poly <- st_intersects(tiles_sf, polys_sf)
+    names(tile_to_poly) <- tiles_sf$tile
 
-  setnames(dt0, c("forest", "valid", "share"),
-           c(sprintf("forest_%s", year0), sprintf("valid_%s", year0), sprintf("share_%s", year0)))
+    jobs <- expand.grid(
+        year = c(year0, year1),
+        tile = relevant_tile_names,
+        stringsAsFactors = FALSE
+    )
 
-  dt1 <- compute_forest_share_for_year(polys_sf, file.path(root_dir, as.character(year1)),
-                                       tile_to_poly,
-                                       poly_id_col = poly_id_col,
-                                       workers = workers,
-                                       relevant_tile_names)
+    oplan <- future::plan()
+    on.exit(future::plan(oplan), add = TRUE)
+    future::plan(future::multicore, workers = workers)
 
-  setnames(dt1, c("forest", "valid", "share"),
-           c(sprintf("forest_%s", year1), sprintf("valid_%s", year1), sprintf("share_%s", year1)))
+    results <- future_lapply(
+        seq_len(nrow(jobs)),
+        function(i) {
 
-  out <- merge(dt0, dt1, by = poly_id_col, all = TRUE)
-  out[, net_change_pp := 100 * (get(sprintf("share_%s", year1)) - get(sprintf("share_%s", year0)))]
-  out[]
+            year <- jobs$year[i]
+            tile <- jobs$tile[i]
+
+            tile_file <- file.path(root_dir, year, tile)
+
+            process_one_tile_one_year(
+                tile_file,
+                polys_sf,
+                tile_to_poly,
+                year = year,
+                poly_id_col = poly_id_col
+            )
+        }, future.seed=TRUE)
+
+    dt <- rbindlist(results)
+
+    out <- dt[, .(
+        forest = sum(forest, na.rm = TRUE),
+        valid  = sum(valid, na.rm = TRUE)
+    ), by = c(poly_id_col, "year")]
+    out[, share := fifelse(valid > 0, forest / valid, NA_real_)]
+
+    dt0 <- out[year == year0]; dt1 <- out[year == year1]
+    
+    setnames(dt0, c("forest", "valid", "share"),
+             c(sprintf("forest_%s", year0), sprintf("valid_%s", year0), sprintf("share_%s", year0)))
+
+    setnames(dt1, c("forest", "valid", "share"),
+             c(sprintf("forest_%s", year1), sprintf("valid_%s", year1), sprintf("share_%s", year1)))
+
+    dt0[, year := NULL, ];  dt1[, year := NULL, ]
+
+    out <- merge(dt0, dt1, by = poly_id_col, all = TRUE)
+    
+    out[, net_change_pp := 100 * (get(sprintf("share_%s", year1)) - get(sprintf("share_%s", year0)))]
+    out[, list(region, coverage.2000 = 100 * share_2000, change.2020 = net_change_pp)]
 }
 
 out <- compute_forest_share_change(
@@ -288,11 +305,30 @@ out <- compute_forest_share_change(
   poly_id_col = "region"
 )
 
-my.sf$forest.coverage.change <- out$net_change_pp
+my.sf$forest.coverage.change <- out$change.2020
 
 @ 
 
-<<forest-change, fig.cap = "Forest Coverage Change for two example countries: Benin and Nigeria.">>=
+<<forest.change.import.borders>>=
+all.borders <- readRDS("all.borders.RDS")
+
+my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
+
+  old <- sf::sf_use_s2()
+  on.exit(sf::sf_use_s2(old), add = TRUE)
+  sf::sf_use_s2(FALSE)
+
+  bbox <- st_bbox(
+    c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax),
+    crs = st_crs(my.sf)
+  )
+
+  st_crop(my.sf, bbox)
+}
+
+@ 
+
+<<forest-change, fig.cap = "Forest Coverage Change for two example countries: Benin and Nigeria.", fig.width=6, fig.height = 4>>=
 library(ggplot2)
 
 ggplot(my.sf) +
@@ -305,7 +341,12 @@ ggplot(my.sf) +
     name = "Forest change (%)"
   ) +
   theme_minimal() +
-  labs(title = "Forest coverage change")
+    labs(title = "Forest coverage change") +
+    geom_sf(data = my.crop.f(0, 4, 15, 15, all.borders),
+            fill = NA,
+            color = "white",
+            linewidth = 0.3)
+
 @ 
 
-
+\end{document}
