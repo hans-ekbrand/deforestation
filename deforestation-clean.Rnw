@@ -2082,9 +2082,11 @@ ggplot(foo) +
 base.url.gain <- "https://gladxfer.umd.edu/users/Potapov/GLCLUC2020/Forest_height_gain_2000_2020/"
 file.name.prefix.gain <- "netgain_"
 
-url.from.file.gain.f.0 <- function(file.name) { paste0(base.url.gain, file.name) }
+## Given a coordinate, find out the proper file suffix. Let the
+## _caller_ join the output from this function with the actual file
+## name, which is layer dependent.
 
-file.from.point.gain.f.0 <- function(lon, lat){
+suffix.from.point.f <- function(lon, lat){
     ## Returns the url needed for this point
     lon.first.corner <- floor(lon / 10) * 10
     lat.first.corner <- ceiling(lat / 10) * 10
@@ -2119,11 +2121,11 @@ file.from.point.gain.f.0 <- function(lon, lat){
     } else {
         lat.corner <- paste0(lat.corner, "N")    
     }
-    my.file <- paste0(file.name.prefix.gain, lat.corner, "_", lon.corner, ".tif")
-    return(my.file)
+    my.suffix <- paste0(lat.corner, "_", lon.corner, ".tif")
+    return(my.suffix)
 }
 
-file.name.from.bbox.gain.f.1 <- function(bbox, tile_deg = 10, eps = 1e-10) {
+suffix.from.bbox.f <- function(bbox, tile_deg = 10, eps = 1e-10) {
     ## for a given bbox, returns the necessary tiff files for forest gain
     ## bbox is sp::bbox result: matrix with rows x,y and cols min,max
 
@@ -2157,16 +2159,16 @@ file.name.from.bbox.gain.f.1 <- function(bbox, tile_deg = 10, eps = 1e-10) {
   files <- apply(tiles, 1, function(t) {
     lon_west <- t[["xmin_tile"]]
     lat_north <- t[["ymin_tile"]] + tile_deg
-    file.from.point.gain.f.0(lon = lon_west, lat = lat_north)
+    suffix.from.point.f(lon = lon_west, lat = lat_north)
   })
 
   unique(files)
 }
 
-fetch.raster.gain.f.1 <- function(my.files, deforestation.path, verbose = FALSE){
+## more generic, takes both files and urls from the caller.
+fetch.raster <- function(my.files, my.urls, deforestation.path, verbose = FALSE){
     ## make sure the files are available locally
     ## download files, if they are missing
-    my.urls <- sapply(my.files, url.from.file.gain.f.0)
     for(j in 1:length(my.files)){
         file.and.path <- paste0(deforestation.path, my.files[j])
         if(!file.exists(file.and.path)) {
@@ -2184,6 +2186,91 @@ globallivingconditions::my.log.f(paste(Sys.time(), "File", my.files[j],
 
 ## Define a new version of temporal.loss.non.forking.version()
 ## which takes the grid as an argument.
+
+names.from.bbox <- function(polygon){
+    ## Ensure raster is available locally
+    my.bbox <- sp::bbox(polygon)
+    ## Same suffix for all types of files    
+    my.suffix <- suffix.from.bbox.f(bbox = my.bbox)
+    ## Loss layer
+    my.loss.files <- paste0(file.name.prefix, "lossyear_", my.suffix)
+    my.loss.urls <- paste0(base.url, my.loss.files)
+    fetch.raster(my.loss.files, my.loss.urls, deforestation.path = deforestation.path)
+    ## Cover layer
+    my.cover.files <- paste0(file.name.prefix, "treecover2000_", my.suffix)
+    my.cover.urls <- paste0(base.url, my.cover.files)
+    fetch.raster(my.cover.files, my.cover.urls, deforestation.path = deforestation.path)
+    ## Gain layer
+    my.gain.files <- paste0(file.name.prefix.gain, my.suffix)
+    my.gain.urls <- paste0(base.url.gain, my.gain.files)
+    fetch.raster(my.gain.files, my.gain.urls, deforestation.path = deforestation.path)
+    return(list(my.loss.files = my.loss.files,
+         my.cover.files = my.cover.files,
+         my.gain.files = my.gain.files))
+}
+
+average.coverage.over.time.directly.from.single.file.fast <- function(
+            polygon, my.cover.file, my.loss.file, my.gain.file,
+            deforestation.path) {
+    ## Loss values under polygon
+    loss <- values.from.file.f(my.loss.file, polygon, deforestation.path)
+    these.are.within.the.area <- which(!is.na(loss))
+    size <- length(these.are.within.the.area)
+    if (size == 0) {
+        globallivingconditions::my.log.f(
+          paste(Sys.time(), "found an area of size 0, returning NULL"),
+          "deforestation.log")
+        return(NULL)
+    }
+    these.were.lost.indices <- which(loss > 0)
+    these.were.lost.values  <- loss[these.were.lost.indices]
+    rm(loss); gc(FALSE)
+
+    globallivingconditions::my.log.f(
+      paste(Sys.time(), "Loss data preparation finished"),
+      "deforestation.log")
+
+    ## Gain values under polygon
+    gain <- values.from.file.f(my.gain.file, polygon, deforestation.path)
+    ## We already know that cells flagged "gain" was zero in year 2000.
+
+    ## Cover values under polygon
+    cover_vals <- values.from.file.f(my.cover.file, polygon, deforestation.path)
+
+    ## Match your original behavior: only consider cells that are non-NA in loss
+    coverage <- cover_vals[these.are.within.the.area]
+    rm(cover_vals); gc(FALSE)
+    globallivingconditions::my.log.f(
+        paste(Sys.time(), "Coverage data preparation finished"),
+        "deforestation.log")
+
+  average.coverage.at.t0 <- mean(coverage)
+
+  my.f <- function(year) {
+    idx <- these.were.lost.indices[these.were.lost.values <= year]
+    if (length(idx) > 0) {
+      mean(c(coverage[-idx], rep(0, length(idx))), na.rm = TRUE)
+    } else {
+      average.coverage.at.t0
+    }
+  }
+
+  average.coverage.per.year <- sapply(my.years, my.f)
+    names(average.coverage.per.year) <- paste0("t", my.years)
+    size = round(geosphere::areaPolygon(polygon)/1e6, 2)
+
+  globallivingconditions::my.log.f(
+     paste(Sys.time(), "Ready with temporal loss for",
+       "a polygon of size", size, "Km^2"),
+     "deforestation.log")
+
+  rm(polygon, my.cover.file, my.loss.file, coverage); gc(FALSE)
+
+  list(
+    size,
+    coverage = c(t0 = average.coverage.at.t0, average.coverage.per.year)
+  )
+}
 
 temporal.loss.and.gain.non.forking.version <- function(index, the.grid, deforestation.path, ...) {
 
@@ -2203,14 +2290,7 @@ temporal.loss.and.gain.non.forking.version <- function(index, the.grid, deforest
 
     ## index refers to the.grid
     polygon <- the.grid[index]
-    
-    my.bbox <- sp::bbox(polygon)
-    my.cover.files <- file.name.from.bbox.f(
-        bbox = my.bbox, layer = "treecover2000")
-    my.loss.files <- file.name.from.bbox.f(
-        bbox = my.bbox, layer = "lossyear")
-    my.gain.files <- file.name.from.bbox.gain.f.1(
-        bbox = my.bbox)
+    file.names <- names.from.bbox(polygon)
     polygon.size <- geosphere::areaPolygon(polygon)
     globallivingconditions::my.log.f(paste(Sys.time(),
          "in temporal.loss.non.forking.version()",
@@ -2221,11 +2301,6 @@ temporal.loss.and.gain.non.forking.version <- function(index, the.grid, deforest
          round(polygon.size / 1e6), "Km^2"),
          "deforestation.log")
          
-    fetch.raster(c(my.cover.files, my.loss.files),
-                 deforestation.path = deforestation.path, ...)
-
-    fetch.raster.gain.f.1(my.gain.files, deforestation.path = deforestation.path)
-
     ## This version of the function should only be called
     ## sequentially on large areas, since it forks.
     
@@ -2255,15 +2330,7 @@ temporal.loss.and.gain.non.forking.version <- function(index, the.grid, deforest
         ## each p is guaranteed to only require a single cover file.
         ## but which cover file is it?
         ## We need to detect that!
-        my.small.bbox <- sp::bbox(p)
-        my.small.cover.file <- file.name.from.bbox.f(
-            bbox = my.small.bbox,
-            layer = "treecover2000")
-        my.small.loss.file <- file.name.from.bbox.f(
-            bbox = my.small.bbox,
-            layer = "lossyear")
-
-        ## TODO add gain file here
+        small.file.names <- names.from.bbox(p)
         
         ## debug START
         small.polygon.size <- geosphere::areaPolygon(p)
@@ -2274,12 +2341,13 @@ temporal.loss.and.gain.non.forking.version <- function(index, the.grid, deforest
         ## debug STOP
             
         average.coverage.over.time.directly.from.single.file.fast(
-            polygon = p, my.cover.file = my.small.cover.file,
-            my.loss.file = my.small.loss.file,
+            polygon = p, my.cover.file = small.file.names$my.cover.files,
+            my.loss.file = small.file.names$my.loss.files,
+            my.gain.file = small.file.names$my.gain.files,
             deforestation.path = deforestation.path)
     }
 
-    my.raster.stats <- sapply(pieces, inner.function, simplify = FALSE)
+    My.raster.stats <- sapply(pieces, inner.function, simplify = FALSE)
     ## At this point, no more data collection from disk is needed, so clean the
     ## cache now.
 
