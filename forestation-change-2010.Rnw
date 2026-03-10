@@ -53,8 +53,7 @@ library(globallivingconditions)
 
 @
 
-
-<<forest.change-2010.calc>>=
+<<forestation-change-2010-preparations>>=
 ## Core workflow for GLCLU annual maps using exactextractr
 ## Forest share = forest pixel equivalents / valid land pixel equivalents
 ## Valid land excludes open surface water (200:207) and ocean (254)
@@ -70,6 +69,7 @@ water_codes  <- c(200:207, 254)     # open surface water + ocean
 
 base.url <- "https://storage.googleapis.com/earthenginepartners-hansen/GLCLU2000-2020/v2/"
 deforestation.path <- "/mnt/windows/Deforestation and poverty - Forest coverage"
+log.file.path <- "~/deforestation.log"
 
 ## Create a smaller my.sf while debugging
 my.sf <- readRDS("my.sf.RDS")
@@ -129,7 +129,7 @@ get_tiles_for_sf <- function(sf_obj) {
 
 needed_tiles <- get_tiles_for_sf(my.sf)
 
-for(year in seq(from = 2000, to = 2020, by = 5)) {
+for(year in seq(from = 2000, to = 2010, by = 5)) {
     ## Fetch the tile files, if they are not already present.
     ## construct the dir name and the dir if it does not exist already
     dir.name <- file.path(deforestation.path, year)
@@ -145,7 +145,7 @@ for(year in seq(from = 2000, to = 2020, by = 5)) {
             my.url <- paste0(base.url, year, "/", tile)
             ## download the file
             globallivingconditions::my.log.f(paste(Sys.time(), "will download this url:",
-                   my.url, "and save it as", file.name), "~/deforestation.log")
+                   my.url, "and save it as", file.name), log.file.path)
             httr::GET(my.url, httr::write_disk(file.name))
         }
     }
@@ -181,14 +181,16 @@ forest_valid_summary_fun <- function(values, coverage_fraction) {
 }
 
 ## Process one tile for one year over only intersecting polygons.
-process_one_tile_one_year <- function(tile_file,
-                                      polys_sf,
-                                      tile_to_poly,
-                                      year,
-                                      poly_id_col = "poly_id") {
+process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_col = "poly_id") {
 
-  result.file.name <- paste0(tile_file, "_results.RDS")
-  tile_name <- basename(tile_file)
+  tile_file <- jobs[i, 2]
+  year <- jobs[i, 1]
+  tile_file_with_path <- Reduce(file.path, list(deforestation.path, year, tile_file))
+  result.file.name <- paste0(tile_file_with_path, "_results.RDS")
+
+  globallivingconditions::my.log.f(paste(Sys.time(),
+    "process_one_tile_one_year() called to work with tile:",
+    tile_file_with_path), log.file.path)
     
   # try cached result
   if (file.exists(result.file.name)) {
@@ -196,27 +198,33 @@ process_one_tile_one_year <- function(tile_file,
     if (!is.null(vals)) return(vals)
   }
 
-  hit_idx <- tile_to_poly[[tile_name]]
+  hit_idx <- tile_to_poly[[tile_file]]
   if (length(hit_idx) == 0) return(NULL)
 
   sub_polys <- polys_sf[hit_idx, ]
-  r <- raster(tile_file)
+
+  ## All tiles exist, but some are not real TIF files. try() raster() and return NULL if it fails
+  r <- tryCatch(raster(tile_file_with_path), error = function(s) NULL)
+  if (is.null(r)) return(NULL)
+  globallivingconditions::my.log.f(paste(Sys.time(),
+    "process_one_tile_one_year() successfully rasterized tile:",
+    tile_file_with_path), log.file.path)
 
   vals <- exact_extract(r, sub_polys, forest_valid_summary_fun, progress = FALSE)
 
   vals <- as.data.table(t(vals))
-  setnames(vals, c("forest", "valid"))
 
   vals[, (poly_id_col) := sub_polys[[poly_id_col]]]
-  vals[, tile_file := tile_name]
   vals[, year := year]
 
   # atomic write
   tmp <- paste0(result.file.name, ".tmp")
   saveRDS(vals, tmp)
   file.rename(tmp, result.file.name)
-
-  vals
+  globallivingconditions::my.log.f(paste(Sys.time(),
+    "process_one_tile_one_year() ready with tile:",
+    tile_file), log.file.path)
+  return(vals)
 }
 
 # Convenience wrapper for two years and net change in percentage points.
@@ -226,24 +234,8 @@ compute_forest_share_change <- function(polys_sf,
                                         year1,
                                         poly_id_col = "region",
                                         workers = max(1L, future::availableCores() - 1L),
-                                        relevant_tile_names = NULL) {
-    if (is.null(relevant_tile_names)) {
-                                        # safer than just using the global bbox: union of per-polygon tile sets could be used,
-                                        # but for one-country/admin run the global bbox is usually fine.
-        relevant_tile_names <- unique(glclu_tile_names_from_bbox(st_bbox(polys_sf)))
-    }
-
-    tile_geoms <- lapply(relevant_tile_names, function(tf) {
-        st_as_sfc(st_bbox_from_tile_name(tf))[[1]]
-    })
-
-    tiles_sf <- st_sf(
-        tile = relevant_tile_names,
-        geometry = st_sfc(tile_geoms, crs = st_crs(polys_sf))
-    )
-
-    tile_to_poly <- st_intersects(tiles_sf, polys_sf)
-    names(tile_to_poly) <- tiles_sf$tile
+                                        relevant_tile_names,
+                                        tile_to_poly) {
 
     jobs <- expand.grid(
         year = c(year0, year1),
@@ -257,21 +249,12 @@ compute_forest_share_change <- function(polys_sf,
 
     results <- future_lapply(
         seq_len(nrow(jobs)),
-        function(i) {
-
-            year <- jobs$year[i]
-            tile <- jobs$tile[i]
-
-            tile_file <- file.path(root_dir, year, tile)
-
-            process_one_tile_one_year(
-                tile_file,
-                polys_sf,
-                tile_to_poly,
-                year = year,
-                poly_id_col = poly_id_col
-            )
-        }, future.seed=TRUE)
+        process_one_tile_one_year,
+        jobs = jobs,
+        polys_sf,
+        tile_to_poly,
+        poly_id_col = poly_id_col,
+        future.seed=TRUE)
 
     dt <- rbindlist(results)
 
@@ -294,58 +277,59 @@ compute_forest_share_change <- function(polys_sf,
     out <- merge(dt0, dt1, by = poly_id_col, all = TRUE)
     
     out[, net_change_pp := 100 * (get(sprintf("share_%s", year1)) - get(sprintf("share_%s", year0)))]
-    out[, list(region, coverage.2000 = 100 * share_2000, change.2020 = net_change_pp)]
+    res <- out[, list(region, coverage.2000 = 100 * share_2000, change.last.year = net_change_pp)]
+    setnames(res, c("change.last.year", paste0("change.year.", year1)))
+    return(res)
+    
 }
 
+find.intersections.f <- function(relevant_tile_names, polys_sf) {
+    ## For each tile, find the polygons it should care for (the intersecting ones)
+
+    ## This function is called only once, but containing the functionality in a function
+    ## makes it easy to controll when spherical geometry (s2) is inactivated.
+
+    ## Temporarily use planar geometry to avoid spurius
+    ## errors about duplicated coordinates
+    old <- sf::sf_use_s2()
+    on.exit(sf::sf_use_s2(old), add = TRUE)
+    sf::sf_use_s2(FALSE)
+    
+    tile_geoms <- lapply(relevant_tile_names, function(tf) {
+        st_as_sfc(st_bbox_from_tile_name(tf))[[1]]
+    })
+
+    tiles_sf <- st_sf(
+        tile = relevant_tile_names,
+        geometry = st_sfc(tile_geoms, crs = st_crs(polys_sf))
+    )
+
+    tile_to_poly <- st_intersects(tiles_sf, polys_sf)
+    names(tile_to_poly) <- tiles_sf$tile
+    return(tile_to_poly)
+}
+
+tile_to_poly <- find.intersections.f(relevant_tile_names = needed_tiles, polys_sf = my.sf)
+
+library(sf)
+library(raster)
+library(exactextractr)
+library(data.table)
+library(future.apply)
+
+year1 <- 2010
 out <- compute_forest_share_change(
   polys_sf = my.sf,
-  root_dir = "/mnt/windows/Deforestation and poverty - Forest coverage",
+  root_dir = deforestation.path,
   year0 = 2000,
-  year1 = 2020,
-  poly_id_col = "region"
+  year1 = year1,
+  poly_id_col = "region",
+  relevant_tile_names = needed_tiles,
+  workers = 4,
+  tile_to_poly = tile_to_poly
 )
-
-my.sf$forest.coverage.change <- out$change.2020
-
-@ 
-
-<<forest.change.import.borders>>=
-all.borders <- readRDS("all.borders.RDS")
-
-my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
-
-  old <- sf::sf_use_s2()
-  on.exit(sf::sf_use_s2(old), add = TRUE)
-  sf::sf_use_s2(FALSE)
-
-  bbox <- st_bbox(
-    c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax),
-    crs = st_crs(my.sf)
-  )
-
-  st_crop(my.sf, bbox)
-}
-
-@ 
-
-<<forest-change-2010, fig.cap = "Forest Coverage Change 2000-2010.", fig.width=6, fig.height = 4>>=
-library(ggplot2)
-
-ggplot(my.sf) +
-  geom_sf(aes(fill = forest.coverage.change), color = NA) +
-  scale_fill_gradient2(
-    low = "red",
-    mid = "black",
-    high = "blue",
-    midpoint = 0,
-    name = "Forest change (%)"
-  ) +
-  theme_minimal() +
-    labs(title = "Forest coverage change") +
-    geom_sf(data = my.crop.f(0, 4, 15, 15, all.borders),
-            fill = NA,
-            color = "white",
-            linewidth = 0.3)
+var.name <- paste0("change.year.", year1)
+my.sf[[var.name]] <- out[[var.name]]
 
 @ 
 
