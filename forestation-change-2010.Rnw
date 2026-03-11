@@ -309,7 +309,93 @@ find.intersections.f <- function(relevant_tile_names, polys_sf) {
     return(tile_to_poly)
 }
 
-tile_to_poly <- find.intersections.f(relevant_tile_names = needed_tiles, polys_sf = my.sf)
+split_large_polygons <- function(polys_sf,
+                                 region_col = "region",
+                                 max_area_km2 = 5000,
+                                 piece_id_col = "region_piece_id") {
+
+    max_area_m2 <- max_area_km2 * 1e6
+    old <- sf::sf_use_s2()
+    on.exit(sf::sf_use_s2(old), add = TRUE)
+    sf::sf_use_s2(FALSE)
+
+    areas <- as.numeric(st_area(polys_sf))
+    big_idx <- which(areas > max_area_m2)
+    small_idx <- which(areas <= max_area_m2)
+
+    out_parts <- list()
+    target.cols <- c(region_col, "piece_grid_id", "geometry", piece_id_col)
+
+    if (length(small_idx)) {
+        small_sf <- polys_sf[small_idx, ]
+        small_sf[[piece_id_col]] <- sprintf("%s__%06d",
+                                      as.character(small_sf[[region_col]]),
+                                      seq_len(nrow(small_sf)))
+        small_sf$piece_grid_id <- NA_integer_
+        out_parts[[length(out_parts) + 1L]] <- small_sf[, target.cols]
+    }
+
+    ## split large polygons
+    for (ii in big_idx) {
+        poly_area_this <- areas[ii]
+        one_poly_orig <- polys_sf[ii, ]
+
+        n_parts_target <- ceiling(poly_area_this / max_area_m2)
+
+        ## grid cell size chosen so expected piece area is around max_area_m2
+        bbox_obj <- st_bbox(one_poly_orig)
+        bbox_area <- (bbox_obj$xmax - bbox_obj$xmin) * (bbox_obj$ymax - bbox_obj$ymin)
+        cellsize <- sqrt(as.numeric(bbox_area) / n_parts_target)
+
+        grid <- st_make_grid(one_poly_orig, cellsize = cellsize, square = TRUE)
+        grid_sf <- st_sf(piece_grid_id = seq_along(grid), geometry = grid)
+
+        pieces <- suppressWarnings(st_intersection(one_poly_orig, grid_sf))
+        pieces <- pieces[!st_is_empty(pieces), ]
+
+        if (nrow(pieces) == 0L) {
+            fallback <- one_poly_orig
+            fallback[[piece_id_col]] <- sprintf("%s__%06d",
+                                        as.character(fallback[[region_col]]),
+                                        piece_counter)
+            piece_counter <- piece_counter + 1L
+            out_parts[[length(out_parts) + 1L]] <- fallback
+            next
+        }
+
+        ## keep original attributes
+        for (nm in setdiff(names(one_poly_orig), attr(one_poly_orig, "sf_column"))) {
+            pieces[[nm]] <- one_poly_orig[[nm]][1]
+        }
+
+        pieces[[piece_id_col]] <- sprintf("%s__%06d",
+                                      as.character(one_poly_orig[[region_col]][1]),
+                                      seq.int(piece_counter, length.out = nrow(pieces)))
+        piece_counter <- piece_counter + nrow(pieces)
+
+        ## globallivingconditions::my.log.f(paste(Sys.time(), "Ready splitting",
+        ##   pieces$region[1], "into", nrow(pieces), "pieces."), log.file.path)
+
+        out_parts[[length(out_parts) + 1L]] <- pieces
+    }
+
+    df_big  <- data.table::rbindlist(lapply(out_parts, sf::st_drop_geometry))
+    geo_big <- do.call(c, lapply(out_parts, sf::st_geometry))
+    out <- sf::st_sf(df_big, geometry = geo_big)
+}
+
+## split overly large polygons into smaller temporary pieces
+my.sf.split <- split_large_polygons(
+  polys_sf = my.sf,
+  region_col = "region",
+  max_area_km2 = 5000,              ## tune this threshold
+  piece_id_col = "region_piece_id"
+)
+
+tile_to_poly <- find.intersections.f(
+  relevant_tile_names = needed_tiles,
+  polys_sf = my.sf.split
+)
 
 library(sf)
 library(raster)
@@ -319,17 +405,17 @@ library(future.apply)
 
 year1 <- 2010
 out <- compute_forest_share_change(
-  polys_sf = my.sf,
+  polys_sf = my.sf.split,
   root_dir = deforestation.path,
   year0 = 2000,
   year1 = year1,
   poly_id_col = "region",
   relevant_tile_names = needed_tiles,
-  workers = 4,
+  workers = 7,
   tile_to_poly = tile_to_poly
 )
-var.name <- paste0("change.year.", year1)
-my.sf[[var.name]] <- out[[var.name]]
+## var.name <- paste0("change.year.", year1)
+## my.sf[[var.name]] <- out[[var.name]]
 
 @ 
 
