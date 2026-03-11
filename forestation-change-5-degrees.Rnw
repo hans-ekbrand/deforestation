@@ -239,12 +239,14 @@ process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_c
   # atomic write
   tmp <- paste0(result.file.name, ".tmp")
   saveRDS(vals, tmp)
-  file.rename(tmp, result.file.name)
-  globallivingconditions::my.log.f(paste(Sys.time(),
-    "process_one_tile_one_year() ready with tile:",
-    tile_file), log.file.path)
+    file.rename(tmp, result.file.name)
+    my.files <- list.files(tmpdir, pattern = paste0("_", Sys.getpid(), "_.*\\.tif$"), full.names = TRUE)
+  globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
+    tile_file, "will remove temporary files: ", paste(my.files, collapse = ", ")), log.file.path)
     ## Clean up any temporary file created by exactextractr.
-    ## TODO
+    if(length(my.files) > 0) {
+        file.remove(my.files)
+    }
   return(vals)
 }
 
