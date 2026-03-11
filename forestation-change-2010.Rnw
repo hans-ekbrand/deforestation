@@ -324,6 +324,7 @@ split_large_polygons <- function(polys_sf,
     small_idx <- which(areas <= max_area_m2)
 
     out_parts <- list()
+    piece_counter <- 1L
     target.cols <- c(region_col, "piece_grid_id", "geometry", piece_id_col)
 
     if (length(small_idx)) {
