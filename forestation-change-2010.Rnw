@@ -410,7 +410,7 @@ out <- compute_forest_share_change(
   root_dir = deforestation.path,
   year0 = 2000,
   year1 = year1,
-  poly_id_col = "region",
+  poly_id_col = "region_piece_id",
   relevant_tile_names = needed_tiles,
   workers = 7,
   tile_to_poly = tile_to_poly
