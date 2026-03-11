@@ -1,0 +1,39 @@
+<<forest.change.import.borders>>=
+all.borders <- readRDS("all.borders.RDS")
+
+my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
+
+  old <- sf::sf_use_s2()
+  on.exit(sf::sf_use_s2(old), add = TRUE)
+  sf::sf_use_s2(FALSE)
+
+  bbox <- st_bbox(
+    c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax),
+    crs = st_crs(my.sf)
+  )
+
+  st_crop(my.sf, bbox)
+}
+
+@ 
+
+<<forest-change-2010, fig.cap = "Forest Coverage Change 2000-2010.", fig.width=6, fig.height = 4>>=
+library(ggplot2)
+
+ggplot(my.sf) +
+  geom_sf(aes(fill = forest.coverage.change), color = NA) +
+  scale_fill_gradient2(
+    low = "red",
+    mid = "black",
+    high = "blue",
+    midpoint = 0,
+    name = "Forest change (%)"
+  ) +
+  theme_minimal() +
+    labs(title = "Forest coverage change") +
+    geom_sf(data = my.crop.f(0, 4, 15, 15, all.borders),
+            fill = NA,
+            color = "white",
+            linewidth = 0.3)
+
+@ 

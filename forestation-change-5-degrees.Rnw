@@ -1,0 +1,448 @@
+\documentclass[10pt,english]{article}
+\usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry} % 16:9 three pages in a row
+\usepackage[english]{babel}
+\usepackage{longtable}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{varioref} %% vref
+\usepackage{paralist} %% compactenum
+\usepackage{siunitx} %% \num
+\usepackage{IEEEtrantools} % proper indentation for multi-line equations
+\usepackage{amsmath} %% \pmatrix
+\usepackage{subfig}
+
+% Caption styling - reduced spacing
+\usepackage{caption}
+\captionsetup{
+  skip=12pt
+}
+
+%% make a single « start and end a chunk of \texttt{}, and two «« to represent the literal «.
+\catcode`«=\active
+\def«#1«{\texttt{#1}}
+
+\begin{document}
+
+The purpose of this document is to test it the new smaller tiles I have created is better for parallellisation on normally configured computers (16 cores, 32 GB of RAM) than the original source files.
+
+Changes compared to the old code:
+
+\begin{itemize}
+\item The code that maps a bbox to set of tiles need to changed using 5 degrees instead of 10 degrees.
+\item The path is now ``/mnt/windows/Deforestation and poverty - Forest coverage/5 degrees''
+\item The new smaller tiles can not be downloaded, so inactivate the downloading part (we have countries with some part outside the existing tiles so download would have been triggered with the new 5 degree grid).
+\item tile_to_poly should use my.sf, not my.sf.split
+\item use years 2005 and 2015 since 2000 and 2020 is not ready yet.
+\end{itemize}
+
+What to test: the actual grid with the old job 19 (now four tiles in central africa)
+
+   year         tile
+   19 2000 20N_010E.tif
+
+   The new files should be 20N_010E.tif, 15N_010E.tif, 20N_015E.tif, 15N_015E.tif
+
+%% make sure the child document exists before calling it.
+
+<<opts.chunk.parent, echo = FALSE>>=
+opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE,
+fig.width=4, fig.height=4, fig.pos = 'htb', tidy.opts=list(blank=FALSE,
+width.cutoff=50), background='white', tidy=TRUE, error=TRUE, message=FALSE,
+dev="png", dpi = 200, autodep = TRUE)
+opts_knit$set(root.dir = ".")
+options(scipen=999) ## Avoid scientific formating of large numbers.
+@ 
+
+%% Install required packages.
+
+<<forest.change.install.packages>>=
+required.packages <- c("httr", "data.table", "sf", "raster",
+                       "exactextractr", "future.apply",
+                       "parallelly", "benchmarkme", "filelock")
+for(package in required.packages){
+    if(! require(package, character.only=TRUE)){
+        install.packages(package, character.only=TRUE)
+    }
+}
+library(devtools)
+install_bitbucket(repo = "hansekbrand/iwi")
+install_bitbucket(repo = "hansekbrand/DHSharmonisation", upgrade = "never", ref = "debug")
+library(globallivingconditions)
+
+@
+
+<<forestation-change-2010-preparations>>=
+## Core workflow for GLCLU annual maps using exactextractr
+## Forest share = forest pixel equivalents / valid land pixel equivalents
+## Valid land excludes open surface water (200:207) and ocean (254)
+
+library(sf)
+library(raster)
+library(exactextractr)
+library(data.table)
+library(future.apply)
+
+forest_codes <- c(27:48, 127:148)   # >= 5m trees on terra firma + wetlands
+water_codes  <- c(200:207, 254)     # open surface water + ocean
+
+base.url <- "https://storage.googleapis.com/earthenginepartners-hansen/GLCLU2000-2020/v2/"
+deforestation.path <- "/mnt/windows/Deforestation and poverty - Forest coverage/5 degrees"
+log.file.path <- "~/deforestation.log"
+
+## Create a smaller my.sf while debugging
+my.sf <- readRDS("my.sf.RDS")
+## ## only Nigeria (566) and Benin 204)
+## my.sf <- my.sf[substring(my.sf$region, 1, 3) %in% c("204", "566"), ]
+
+# Return GLCLU tile names overlapping an sf/sp bbox.
+glclu_tile_names_from_bbox <- function(bbox, tile_deg = 10, eps = 1e-10) {
+  # bbox can be st_bbox or sp::bbox; coerce to named vector with xmin/xmax/ymin/ymax
+  if (is.matrix(bbox)) {
+    xmin <- bbox["x", "min"]
+    xmax <- bbox["x", "max"]
+    ymin <- bbox["y", "min"]
+    ymax <- bbox["y", "max"]
+  } else {
+    xmin <- bbox[["xmin"]]
+    xmax <- bbox[["xmax"]]
+    ymin <- bbox[["ymin"]]
+    ymax <- bbox[["ymax"]]
+  }
+
+  xmax2 <- xmax - eps
+  ymax2 <- ymax - eps
+  if (xmax2 < xmin) xmax2 <- xmin
+  if (ymax2 < ymin) ymax2 <- ymin
+
+  x_starts <- seq(floor(xmin / tile_deg) * tile_deg,
+                  floor(xmax2 / tile_deg) * tile_deg,
+                  by = tile_deg)
+  y_starts <- seq(floor(ymin / tile_deg) * tile_deg,
+                  floor(ymax2 / tile_deg) * tile_deg,
+                  by = tile_deg)
+
+  tiles <- expand.grid(xmin_tile = x_starts, ymin_tile = y_starts)
+
+  apply(tiles, 1, function(t) {
+    lon_west  <- as.integer(t[["xmin_tile"]])
+    lat_north <- as.integer(t[["ymin_tile"]] + tile_deg)
+
+    lat_lab <- sprintf("%02d%s", abs(lat_north), ifelse(lat_north >= 0, "N", "S"))
+    lon_lab <- sprintf("%03d%s", abs(lon_west),  ifelse(lon_west  >= 0, "E", "W"))
+    paste0(lat_lab, "_", lon_lab, ".tif")
+  })
+}
+
+get_tiles_for_sf <- function(sf_obj) {
+  sf_obj |>
+    st_geometry() |>
+    lapply(st_bbox) |>
+    lapply(glclu_tile_names_from_bbox, tile_deg = 5) |>
+    unlist() |>
+    unique()
+}
+
+## ENSURE FILES ARE AVAILABLE LOCALLY START
+## This part works with SF objects only, starting with my.sf
+
+needed_tiles <- get_tiles_for_sf(my.sf)
+
+## for(year in seq(from = 2000, to = 2010, by = 5)) {
+##     ## Fetch the tile files, if they are not already present.
+##     ## construct the dir name and the dir if it does not exist already
+##     dir.name <- file.path(deforestation.path, year)
+##     if(! dir.exists(dir.name)) {
+##         dir.create(dir.name)
+##     }
+##     ## With the dir and dirname in place iterate over the needed tiles
+##     for(tile in needed_tiles) {
+##         ## construct the dir name and check if the file exists.
+##         file.name <- file.path(dir.name, tile)
+##         if(! file.exists(file.name)) {
+##             ## Create the URI
+##             my.url <- paste0(base.url, year, "/", tile)
+##             ## download the file
+##             globallivingconditions::my.log.f(paste(Sys.time(), "will download this url:",
+##                    my.url, "and save it as", file.name), log.file.path)
+##             httr::GET(my.url, httr::write_disk(file.name))
+##         }
+##     }
+## }
+
+## ENSURE FILES ARE AVAILABLE LOCALLY STOP
+
+# bbox polygon for a tile name like 10N_000E.tif
+st_bbox_from_tile_name <- function(tile_name, tile_deg = 10) {
+  nm <- sub("\\.tif$", "", basename(tile_name))
+  parts <- strsplit(nm, "_")[[1]]
+  lat_north <- as.integer(sub("([0-9]+)[NS]", "\\1", parts[1]))
+  if (grepl("S$", parts[1])) lat_north <- -lat_north
+  lon_west <- as.integer(sub("([0-9]+)[EW]", "\\1", parts[2]))
+  if (grepl("W$", parts[2])) lon_west <- -lon_west
+
+  st_bbox(c(
+    xmin = lon_west,
+    xmax = lon_west + tile_deg,
+    ymin = lat_north - tile_deg,
+    ymax = lat_north
+  ), crs = 4326)
+}
+
+# One exactextractr summary: returns forest and valid pixel equivalents per polygon.
+forest_valid_summary_fun <- function(values, coverage_fraction) {
+  is_water  <- values %in% water_codes
+  is_forest <- values %in% forest_codes
+
+  valid  <- sum(coverage_fraction[!is_water], na.rm = TRUE)
+  forest <- sum(coverage_fraction[is_forest], na.rm = TRUE)
+  c(forest = forest, valid = valid)
+}
+
+## Process one tile for one year over only intersecting polygons.
+process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_col = "poly_id") {
+
+  tile_file <- jobs[i, 2]
+  year <- jobs[i, 1]
+  tile_file_with_path <- Reduce(file.path, list(deforestation.path, year, tile_file))
+  result.file.name <- paste0(tile_file_with_path, "_results.RDS")
+
+  globallivingconditions::my.log.f(paste(Sys.time(),
+    "process_one_tile_one_year() called to work with tile:",
+    tile_file_with_path), log.file.path)
+    
+  # try cached result
+  if (file.exists(result.file.name)) {
+    vals <- tryCatch(readRDS(result.file.name), error = function(e) NULL)
+    if (!is.null(vals)) return(vals)
+  }
+
+  hit_idx <- tile_to_poly[[tile_file]]
+  if (length(hit_idx) == 0) return(NULL)
+
+  sub_polys <- polys_sf[hit_idx, ]
+
+  ## All tiles exist, but some are not real TIF files. try() raster() and return NULL if it fails
+  r <- tryCatch(raster(tile_file_with_path), error = function(s) NULL)
+  if (is.null(r)) return(NULL)
+  globallivingconditions::my.log.f(paste(Sys.time(),
+    "process_one_tile_one_year() successfully rasterized tile:",
+    tile_file_with_path), log.file.path)
+
+  vals <- exact_extract(r, sub_polys, forest_valid_summary_fun, progress = FALSE)
+
+  vals <- as.data.table(t(vals))
+
+  vals[, (poly_id_col) := sub_polys[[poly_id_col]]]
+  vals[, year := year]
+
+  # atomic write
+  tmp <- paste0(result.file.name, ".tmp")
+  saveRDS(vals, tmp)
+  file.rename(tmp, result.file.name)
+  globallivingconditions::my.log.f(paste(Sys.time(),
+    "process_one_tile_one_year() ready with tile:",
+    tile_file), log.file.path)
+  return(vals)
+}
+
+# Convenience wrapper for two years and net change in percentage points.
+compute_forest_share_change <- function(polys_sf,
+                                        root_dir,
+                                        year0,
+                                        year1,
+                                        poly_id_col = "region",
+                                        workers = max(1L, future::availableCores() - 1L),
+                                        relevant_tile_names,
+                                        tile_to_poly) {
+
+    jobs <- expand.grid(
+        year = c(year0, year1),
+        tile = relevant_tile_names,
+        stringsAsFactors = FALSE
+    )
+
+    oplan <- future::plan()
+    on.exit(future::plan(oplan), add = TRUE)
+    future::plan(future::multicore, workers = workers)
+
+    results <- future_lapply(
+        seq_len(nrow(jobs)),
+        process_one_tile_one_year,
+        jobs = jobs,
+        polys_sf,
+        tile_to_poly,
+        poly_id_col = poly_id_col,
+        future.seed=TRUE)
+
+    dt <- rbindlist(results)
+
+    out <- dt[, .(
+        forest = sum(forest, na.rm = TRUE),
+        valid  = sum(valid, na.rm = TRUE)
+    ), by = c(poly_id_col, "year")]
+    out[, share := fifelse(valid > 0, forest / valid, NA_real_)]
+
+    dt0 <- out[year == year0]; dt1 <- out[year == year1]
+    
+    setnames(dt0, c("forest", "valid", "share"),
+             c(sprintf("forest_%s", year0), sprintf("valid_%s", year0), sprintf("share_%s", year0)))
+
+    setnames(dt1, c("forest", "valid", "share"),
+             c(sprintf("forest_%s", year1), sprintf("valid_%s", year1), sprintf("share_%s", year1)))
+
+    dt0[, year := NULL, ];  dt1[, year := NULL, ]
+
+    out <- merge(dt0, dt1, by = poly_id_col, all = TRUE)
+    
+    out[, net_change_pp := 100 * (get(sprintf("share_%s", year1)) - get(sprintf("share_%s", year0)))]
+    res <- out[, list(region, coverage.2000 = 100 * share_2000, change.last.year = net_change_pp)]
+    setnames(res, c("change.last.year", paste0("change.year.", year1)))
+    return(res)
+    
+}
+
+find.intersections.f <- function(relevant_tile_names, polys_sf) {
+    ## For each tile, find the polygons it should care for (the intersecting ones)
+
+    ## This function is called only once, but containing the functionality in a function
+    ## makes it easy to controll when spherical geometry (s2) is inactivated.
+
+    ## Temporarily use planar geometry to avoid spurius
+    ## errors about duplicated coordinates
+    old <- sf::sf_use_s2()
+    on.exit(sf::sf_use_s2(old), add = TRUE)
+    sf::sf_use_s2(FALSE)
+    
+    tile_geoms <- lapply(relevant_tile_names, function(tf) {
+        st_as_sfc(st_bbox_from_tile_name(tf, tile_deg=5))[[1]]
+    })
+
+    tiles_sf <- st_sf(
+        tile = relevant_tile_names,
+        geometry = st_sfc(tile_geoms, crs = st_crs(polys_sf))
+    )
+
+    tile_to_poly <- st_intersects(tiles_sf, polys_sf)
+    names(tile_to_poly) <- tiles_sf$tile
+    return(tile_to_poly)
+}
+
+## split_large_polygons <- function(polys_sf,
+##                                  region_col = "region",
+##                                  max_area_km2 = 5000,
+##                                  piece_id_col = "region_piece_id") {
+
+##     max_area_m2 <- max_area_km2 * 1e6
+##     old <- sf::sf_use_s2()
+##     on.exit(sf::sf_use_s2(old), add = TRUE)
+##     sf::sf_use_s2(FALSE)
+
+##     areas <- as.numeric(st_area(polys_sf))
+##     big_idx <- which(areas > max_area_m2)
+##     small_idx <- which(areas <= max_area_m2)
+
+##     out_parts <- list()
+##     piece_counter <- 1L
+##     target.cols <- c(region_col, "piece_grid_id", "geometry", piece_id_col)
+
+##     if (length(small_idx)) {
+##         small_sf <- polys_sf[small_idx, ]
+##         small_sf[[piece_id_col]] <- sprintf("%s__%06d",
+##                                       as.character(small_sf[[region_col]]),
+##                                       seq_len(nrow(small_sf)))
+##         small_sf$piece_grid_id <- NA_integer_
+##         out_parts[[length(out_parts) + 1L]] <- small_sf[, target.cols]
+##     }
+
+##     ## split large polygons
+##     for (ii in big_idx) {
+##         poly_area_this <- areas[ii]
+##         one_poly_orig <- polys_sf[ii, ]
+
+##         n_parts_target <- ceiling(poly_area_this / max_area_m2)
+
+##         ## grid cell size chosen so expected piece area is around max_area_m2
+##         bbox_obj <- st_bbox(one_poly_orig)
+##         bbox_area <- (bbox_obj$xmax - bbox_obj$xmin) * (bbox_obj$ymax - bbox_obj$ymin)
+##         cellsize <- sqrt(as.numeric(bbox_area) / n_parts_target)
+
+##         grid <- st_make_grid(one_poly_orig, cellsize = cellsize, square = TRUE)
+##         grid_sf <- st_sf(piece_grid_id = seq_along(grid), geometry = grid)
+
+##         pieces <- suppressWarnings(st_intersection(one_poly_orig, grid_sf))
+##         pieces <- pieces[!st_is_empty(pieces), ]
+
+##         if (nrow(pieces) == 0L) {
+##             fallback <- one_poly_orig
+##             fallback[[piece_id_col]] <- sprintf("%s__%06d",
+##                                         as.character(fallback[[region_col]]),
+##                                         piece_counter)
+##             piece_counter <- piece_counter + 1L
+##             out_parts[[length(out_parts) + 1L]] <- fallback
+##             next
+##         }
+
+##         ## keep original attributes
+##         for (nm in setdiff(names(one_poly_orig), attr(one_poly_orig, "sf_column"))) {
+##             pieces[[nm]] <- one_poly_orig[[nm]][1]
+##         }
+
+##         pieces[[piece_id_col]] <- sprintf("%s__%06d",
+##                                       as.character(one_poly_orig[[region_col]][1]),
+##                                       seq.int(piece_counter, length.out = nrow(pieces)))
+##         piece_counter <- piece_counter + nrow(pieces)
+
+##         ## globallivingconditions::my.log.f(paste(Sys.time(), "Ready splitting",
+##         ##   pieces$region[1], "into", nrow(pieces), "pieces."), log.file.path)
+
+##         out_parts[[length(out_parts) + 1L]] <- pieces
+##     }
+
+##     df_big  <- data.table::rbindlist(lapply(out_parts, sf::st_drop_geometry))
+##     geo_big <- do.call(c, lapply(out_parts, sf::st_geometry))
+##     out <- sf::st_sf(df_big, geometry = geo_big)
+## }
+
+## ## split overly large polygons into smaller temporary pieces
+## my.sf.split <- split_large_polygons(
+##   polys_sf = my.sf,
+##   region_col = "region",
+##   max_area_km2 = 500,              ## tune this threshold
+##   piece_id_col = "region_piece_id"
+## )
+
+tile_to_poly <- find.intersections.f(
+  relevant_tile_names = needed_tiles,
+  polys_sf = my.sf
+)
+
+@
+
+<<forestation-change-2010-actually-calc>>=
+
+library(sf)
+library(raster)
+library(exactextractr)
+library(data.table)
+library(future.apply)
+
+year1 <- 2015
+out <- compute_forest_share_change(
+  polys_sf = my.sf,
+  root_dir = deforestation.path,
+  year0 = 2005,
+  year1 = year1,
+  poly_id_col = "region",
+  relevant_tile_names = needed_tiles,
+  workers = 5,
+  tile_to_poly = tile_to_poly
+)
+## var.name <- paste0("change.year.", year1)
+## my.sf[[var.name]] <- out[[var.name]]
+
+@ 
+
+\end{document}
+
+
