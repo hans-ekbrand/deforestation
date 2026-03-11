@@ -389,7 +389,7 @@ split_large_polygons <- function(polys_sf,
 my.sf.split <- split_large_polygons(
   polys_sf = my.sf,
   region_col = "region",
-  max_area_km2 = 5000,              ## tune this threshold
+  max_area_km2 = 500,              ## tune this threshold
   piece_id_col = "region_piece_id"
 )
 
@@ -400,7 +400,7 @@ tile_to_poly <- find.intersections.f(
 
 @
 
-<<forestation-change-2010-actually-calc, eval = FALSE>>=
+<<forestation-change-2010-actually-calc>>=
 
 library(sf)
 library(raster)
