@@ -398,6 +398,10 @@ tile_to_poly <- find.intersections.f(
   polys_sf = my.sf.split
 )
 
+@
+
+<<forestation-change-2010-actually-calc, eval = FALSE>>=
+
 library(sf)
 library(raster)
 library(exactextractr)
@@ -412,7 +416,7 @@ out <- compute_forest_share_change(
   year1 = year1,
   poly_id_col = "region_piece_id",
   relevant_tile_names = needed_tiles,
-  workers = 7,
+  workers = 5,
   tile_to_poly = tile_to_poly
 )
 ## var.name <- paste0("change.year.", year1)
@@ -421,3 +425,5 @@ out <- compute_forest_share_change(
 @ 
 
 \end{document}
+
+
