@@ -12,6 +12,12 @@
 \usepackage{amsmath} %% \pmatrix
 \usepackage{subfig}
 
+\usepackage[round-mode=places, round-pad=false, round-precision=2, group-separator={,}, output-decimal-marker={.}]{siunitx}
+\sisetup{detect-all} %% use main font for numbers
+
+\usepackage{natbib} %% Author year citations
+\bibliographystyle{apalike}   % or alpha, apalike, unsrt, etc.
+
 % Caption styling - reduced spacing
 \usepackage{caption}
 \captionsetup{
@@ -24,24 +30,47 @@
 
 \begin{document}
 
-The purpose of this document is to test it the new smaller tiles I have created is better for parallellisation on normally configured computers (16 cores, 32 GB of RAM) than the original source files.
+\section{Motivation}
+Over the last 10.000 years, humans have reshaped large portions of the earths surface by cutting down trees and replaced them with crops, substituting forests with farmlands. In 2013 a database of forest coverage and deforestation for the entire earth during during the period 2000-2013 was published \citet{Hansen2013}, and it has been updated regurlarly, the latest version is from 2024. The data points in this database represent very small rectangles, approximately $30\times30 \textrm{m}^2$. Figure \vref{fig:Hansen} is a visualisation of that database. In short, the motivation of this paper and the accompanying data products is to provide forest change data in a format that is easily usable for social scientists.
 
-Changes compared to the old code:
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\linewidth]{hansen.png}
+    \caption{Visualisation of the Global Forest Change database. Source \citet{Hansen2013}. Green represent stable forests, red is areas with deforestation, blue is new forest and pink is a mix of deforestation followed by new forest growth.}
+    \label{fig:Hansen}
+\end{figure}
 
-\begin{itemize}
-\item The code that maps a bbox to set of tiles need to changed using 5 degrees instead of 10 degrees.
-\item The path is now ``/mnt/windows/Deforestation and poverty - Forest coverage/5 degrees''
-\item The new smaller tiles can not be downloaded, so inactivate the downloading part (we have countries with some part outside the existing tiles so download would have been triggered with the new 5 degree grid).
-\item tile\_to\_poly should use my.sf, not my.sf.split
-\item use years 2005 and 2015 since 2000 and 2020 is not ready yet.
-\end{itemize}
 
-What to test: the actual grid with the old job 19 (now four tiles in central africa)
+If you want to explain why deforestation takes place, or the social consequences of deforestation, you need to put the deforestation data in context, and for this purpose you need data aggregated to some socially relevant area unit. A natural choice for such areas are the administrative areas defined by each country. Aggregating time series data for 152 billion tiny rectangles sized 30 by 30 meters to time series data for \num{34325} administrative areas is an essential step towards analyses of causes and consequences of deforestation, but it also a computational and technical challenge. This document both serves as the canonical source for how it was done, and as a manual for how to use the aggregated database.
 
-   year         tile
-   19 2000 20N\_010E.tif
 
-   The new files should be 20N\_010E.tif, 15N\_010E.tif, 20N\_015E.tif, 15N\_015E.tif
+
+
+
+% \section{Aim}
+% The aim of this article is to document a dataproduct so that it can be used correctly. The data product contains aggregated time-series data on forest coverage and deforestation in between year 2000 and 2023 in 18956 administrative areas in Latin America, Africa and South Asia. The database can be also reconstructed from scratch by running the source code of this document (ref).
+
+In this database, and in this document at large, \emph{forest coverage} has a precise definition: the proportion of the area that is covered by organic structures (trees) that reflects sunlight at least 5 meters above the ground. Deforestation is defined as the decrease in forestation. If an 70 per cent of an area was covered forest at time t0, and at time t1 65 per cent of the area is covered by forest, the deforestation of that area between time t0 and t1 was 5. The recorded deforestation statistic is this \emph{difference in forestation}. If you want to analyse the \emph{relative} deforestation, e.g. by calculating how large percentage of the existing forest at time t0 was lost at time t1, you have to first derive the forestation state at t1 and then take the ratio between forestation at t0 and t1.
+
+
+% The purpose of this document is to test it the new smaller tiles I have created is better for parallellisation on normally configured computers (16 cores, 32 GB of RAM) than the original source files.
+
+% Changes compared to the old code:
+
+% \begin{itemize}
+% \item The code that maps a bbox to set of tiles need to changed using 5 degrees instead of 10 degrees.
+% \item The path is now ``/mnt/windows/Deforestation and poverty - Forest coverage/5 degrees''
+% \item The new smaller tiles can not be downloaded, so inactivate the downloading part (we have countries with some part outside the existing tiles so download would have been triggered with the new 5 degree grid).
+% \item tile\_to\_poly should use my.sf, not my.sf.split
+% \item use years 2005 and 2015 since 2000 and 2020 is not ready yet.
+% \end{itemize}
+
+% What to test: the actual grid with the old job 19 (now four tiles in central africa)
+
+%    year         tile
+%    19 2000 20N\_010E.tif
+
+%    The new files should be 20N\_010E.tif, 15N\_010E.tif, 20N\_015E.tif, 15N\_015E.tif
 
 %% make sure the child document exists before calling it.
 
@@ -89,6 +118,10 @@ water_codes  <- c(200:207, 254)     # open surface water + ocean
 base.url <- "https://storage.googleapis.com/earthenginepartners-hansen/GLCLU2000-2020/v2/"
 deforestation.path <- "/mnt/windows/Deforestation and poverty - Forest coverage/5 degrees"
 log.file.path <- "~/deforestation.log"
+
+## make it possible for the program run in a working dir with limited diskspace, by reading/saving large artifacts from another directory (where disk space is not as limited)
+
+
 
 ## Create a smaller my.sf while debugging
 my.sf <- readRDS("my.sf.RDS")
@@ -213,10 +246,10 @@ process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_c
     if (!is.null(vals)) return(vals)
   }
 
-  ## Only log when working on something new
-  globallivingconditions::my.log.f(paste(Sys.time(),
-    "process_one_tile_one_year() called to work with tile:",
-    tile_file_with_path, "job number:", i), log.file.path)
+  ## ## Only log when working on something new
+  ## globallivingconditions::my.log.f(paste(Sys.time(),
+  ##   "process_one_tile_one_year() called to work with tile:",
+  ##   tile_file_with_path, "job number:", i), log.file.path)
     
   hit_idx <- tile_to_poly[[tile_file]]
   if (length(hit_idx) == 0) return(NULL)
@@ -243,9 +276,9 @@ process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_c
     }
   r <- tryCatch(raster(tile_file_with_path), error = function(s) NULL)
   if (is.null(r)) return(NULL)
-  globallivingconditions::my.log.f(paste(Sys.time(),
-    "process_one_tile_one_year() successfully rasterized tile:",
-    tile_file_with_path, "for job number:", i), log.file.path)
+  ## globallivingconditions::my.log.f(paste(Sys.time(),
+  ##   "process_one_tile_one_year() successfully rasterized tile:",
+  ##   tile_file_with_path, "for job number:", i), log.file.path)
 
   vals <- exact_extract(r, sub_polys, forest_valid_summary_fun, progress = FALSE)
 
@@ -258,15 +291,23 @@ process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_c
   tmp <- paste0(result.file.name, ".tmp")
   saveRDS(vals, tmp)
     file.rename(tmp, result.file.name)
+    ## find areas with zero valid cells, just to inform the end user
+    ## these are probably lakes.
+    area.indices.with.zero.valid.cells <- which(vals$valid == 0)
+    if(length(area.indices.with.zero.valid.cells) > 0) {
+        globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() processing tile:",
+           tile_file, "found at least one area with zero valid cells:",
+           paste(vals$region_piece_id[area.indices.with.zero.valid.cells], collapse = ", ")), log.file.path)
+    }
     my.files <- list.files(tempdir(), pattern = paste0("_", Sys.getpid(), "_.*\\.tif$"), full.names = TRUE)
     ## Clean up any temporary file created by exactextractr.
     if(length(my.files) > 0) {
-  globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
-    tile_file, "will remove temporary files: ", paste(my.files, collapse = ", ")), log.file.path)
+  ## globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
+  ##   tile_file, "will remove temporary files: ", paste(my.files, collapse = ", ")), log.file.path)
         file.remove(my.files)
     } else {
-  globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
-    tile_file, "no temporary files for job number:", i), log.file.path)
+  ## globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
+  ##   tile_file, "no temporary files for job number:", i), log.file.path)
     }
   return(vals)
 }
@@ -405,6 +446,9 @@ compute_forest_share_change <- function(polys_sf,
         stringsAsFactors = FALSE
     )
 
+    ## save a copy of jobs, that the the user can follow the progress
+    write.csv(jobs, file = "jobs.csv")
+
     oplan <- future::plan()
     on.exit(future::plan(oplan), add = TRUE)
     future::plan(future::multicore, workers = workers)
@@ -416,29 +460,22 @@ compute_forest_share_change <- function(polys_sf,
         polys_sf,
         tile_to_poly,
         poly_id_col = poly_id_col,
-        future.seed=TRUE)
-
+        future.seed=TRUE,
+        future.scheduling = Inf)
     dt <- rbindlist(results)
 
     out <- dt[, .(
         forest = sum(forest, na.rm = TRUE),
         valid  = sum(valid, na.rm = TRUE)
     ), by = c(poly_id_col, "year")]
-    out[, share := fifelse(valid > 0, forest / valid, NA_real_)]
 
     dt0 <- out[year == year0]; dt1 <- out[year == year1]
-    
-    setnames(dt0, c("forest", "valid", "share"),
-             c(sprintf("forest_%s", year0), sprintf("valid_%s", year0), sprintf("share_%s", year0)))
-
-    setnames(dt1, c("forest", "valid", "share"),
-             c(sprintf("forest_%s", year1), sprintf("valid_%s", year1), sprintf("share_%s", year1)))
-
+    setnames(dt0, c("forest", "valid"),
+             c(sprintf("forest_%s", year0), sprintf("valid_%s", year0)))
+    setnames(dt1, c("forest", "valid"),
+             c(sprintf("forest_%s", year1), sprintf("valid_%s", year1)))
     dt0[, year := NULL, ];  dt1[, year := NULL, ]
-
     out <- merge(dt0, dt1, by = poly_id_col, all = TRUE)
-    
-    out[, net_change_pp := 100 * (get(sprintf("share_%s", year1)) - get(sprintf("share_%s", year0)))]
     return(out)
     
 }
@@ -453,10 +490,11 @@ library(data.table)
 library(future.apply)
 
 year1 <- 2015
+year0 <- 2005
 out <- compute_forest_share_change(
   polys_sf = my.sf.split,
   root_dir = deforestation.path,
-  year0 = 2005,
+  year0 = year0,
   year1 = year1,
   poly_id_col = "region_piece_id",
   relevant_tile_names = needed_tiles,
@@ -469,34 +507,248 @@ my.map <- my.sf.split[c("region", "region_piece_id")]
 setDT(my.map)
 out <- merge(out, my.map)
 my.cols <- setdiff(colnames(out), c("region_piece_id", "region", "geometry"))
-out <- out[, lapply(.SD, sum), by = region, .SDcols = my.cols]
+out <- out[, lapply(.SD, sum, na.rm = TRUE), by = region, .SDcols = my.cols]
+
+## Now with the counts in place can calculate proprtions and change
+out[, paste0("share_", year0) := get(paste0("forest_", year0)) / get(paste0("valid_", year0))]
+out[, paste0("share_", year1) := get(paste0("forest_", year1)) / get(paste0("valid_", year1))]
+## last share minus first share gives negative values when there is a net loss of forest
+out[, net_change_pp := get(paste0("share_", year1)) - get(paste0("share_", year0))]
 
 my.sf$change <- NA
 these <- match(out$region, my.sf$region)
 my.sf$change[these] <- out$net_change_pp
 
-my.sf$share_2005 <- NA
-my.sf$share_2005[these] <- out$share_2005
+var.name.share.year0 <- paste0("share_", year0)
+
+my.sf[[var.name.share.year0]] <- NA
+my.sf[[var.name.share.year0]][these] <- out[[var.name.share.year0]]
 
 @
 
-<<forestation-change-temporary-5-degrees, fig.cap = "Forest Coverage Change 2005-2015.", fig.width=6, fig.height = 4>>=
+<<forestation-change-temporary-actually-calc-2000-2020>>=
+library(sf)
+library(raster)
+library(exactextractr)
+library(data.table)
+library(future.apply)
+
+year1 <- 2020
+year0 <- 2000
+out <- compute_forest_share_change(
+  polys_sf = my.sf.split,
+  root_dir = deforestation.path,
+  year0 = year0,
+  year1 = year1,
+  poly_id_col = "region_piece_id",
+  relevant_tile_names = needed_tiles,
+  workers = 8,
+  tile_to_poly = tile_to_poly
+)
+
+## stitch
+my.map <- my.sf.split[c("region", "region_piece_id")]
+setDT(my.map)
+out <- merge(out, my.map)
+my.cols <- setdiff(colnames(out), c("region_piece_id", "region", "geometry"))
+out <- out[, lapply(.SD, sum, na.rm = TRUE), by = region, .SDcols = my.cols]
+
+## Now with the counts in place can calculate proprtions and change
+out[, paste0("share_", year0) := get(paste0("forest_", year0)) / get(paste0("valid_", year0))]
+out[, paste0("share_", year1) := get(paste0("forest_", year1)) / get(paste0("valid_", year1))]
+## last share minus first share gives negative values when there is a net loss of forest
+out[, net_change_pp := get(paste0("share_", year1)) - get(paste0("share_", year0))]
+
+my.sf$change <- NA
+these <- match(out$region, my.sf$region)
+my.sf$change[these] <- out$net_change_pp
+
+var.name.share.year0 <- paste0("share_", year0)
+
+my.sf[[var.name.share.year0]] <- NA
+my.sf[[var.name.share.year0]][these] <- out[[var.name.share.year0]]
+
+@
+
+<<forestation-change-cosmetic>>=
+## Set areas with "no valid cells" to "no change" rather than NA which will just show up as grey dots in the maps
+my.sf.copy <- my.sf
+these <- which(is.na(my.sf.copy$change))
+my.sf.copy$change[these] <- 0
+
+@
+
+<<properly.sized.grid.with.graticules>>=
+bb <- st_bbox(my.sf.copy)
+
+grat <- st_graticule(
+  x = bb,
+  crs = st_crs(my.sf.copy),
+  lon = seq(floor(bb["xmin"]/50)*50, ceiling(bb["xmax"]/50)*50, by = 50),
+  lat = seq(floor(bb["ymin"]/20)*20, ceiling(bb["ymax"]/20)*20, by = 20)
+)
+
+@ 
+
+<<full-grid, fig.cap = "The borders of the administrative areas used.", dpi = 400, fig.width=6, fig.height=2.4>>=
+library(sf); library(ggplot2)
+## par(mar = c(0, 0, 0, 0))
+## plot(st_geometry(full.grid.sf), lwd = 0.05)
+
+ggplot() +
+    ## graticule behind polygons
+    geom_sf(data = grat, linewidth = 0.10) +
+    ## The adminiatrative borders
+    geom_sf(data = my.sf.copy, fill = "white", linewidth = 0.05) + 
+
+    ## lock extent to the bbox
+    coord_sf(
+        xlim = c(bb["xmin"], bb["xmax"]),
+        ylim = c(bb["ymin"], bb["ymax"]),
+        expand = FALSE
+    ) +
+
+  theme_minimal()
+
+@ 
+
+%% Borders needed for the next graph.
+
+
+<<forest.change.path.to.artifacts>>=
+path.to.artifacts <- "/mnt/windows/Deforestation and poverty - Paper I/"
+@ 
+
+<<forest.change.import.borders>>=
+all.borders <- readRDS(file.path(path.to.artifacts, "all.borders.RDS"))
+
+my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
+
+  withCallingHandlers({
+
+    old <- sf::sf_use_s2()
+    on.exit(sf::sf_use_s2(old), add = TRUE)
+    sf::sf_use_s2(FALSE)
+
+    bbox <- sf::st_bbox(
+      c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax),
+      crs = sf::st_crs(my.sf)
+    )
+
+    sf::st_crop(my.sf, bbox)
+
+  }, warning = function(w) invokeRestart("muffleWarning"))
+}
+
+@
+
+<<forestation, fig.cap = "Average forest coverage in the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
+library(sf); library(ggplot2)
+
+ggplot() +
+  # graticule behind polygons
+  geom_sf(data = grat, linewidth = 0.10) +
+
+  geom_sf(data = my.sf.copy,
+          aes(fill = share_2000 * 100),
+          color = NA) +
+  geom_sf(data = all.borders, fill = NA, linewidth = 0.05) +
+
+  # lock extent to the bbox
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"]),
+    expand = FALSE
+  ) +
+
+  scale_fill_gradientn(
+    colours = rev(terrain.colors(256)),
+    limits = c(0, 100),
+    name = "Forest coverage (%)  "
+  ) +
+
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.key.width = unit(1, "cm"),
+    legend.key.height = unit(0.07, "cm"),          
+    legend.text = element_text(size = 7)
+  )
+
+@
+
+<<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage ", year0, "-", year1, " per administrative area."), fig.width=6, fig.height = 3>>=
 library(ggplot2)
 
-ggplot(my.sf) +
+ggplot() +
+    ## graticule behind polygons
+    geom_sf(data = grat, linewidth = 0.10) +
+
+    geom_sf(data = my.sf.copy, aes(fill = change), color = NA) +
+
+    ## lock extent to the bbox
+    coord_sf(
+        xlim = c(bb["xmin"], bb["xmax"]),
+        ylim = c(bb["ymin"], bb["ymax"]),
+        expand = FALSE
+    ) +
+
+    scale_fill_gradient2(
+    low = "red",
+    mid = "black",
+    high = "blue",
+    midpoint = 0,
+    name = "Forest coverage change (%)  "
+  ) +
+    theme_minimal() +
+    theme(legend.position = "top",
+          legend.direction = "horizontal",
+          legend.key.width = unit(1, "cm"),
+          legend.key.height = unit(0.07, "cm"),          
+          legend.text = element_text(size = 7)) + 
+    labs(title = NULL)
+
+@
+
+
+
+<<forest-change-south-america, fig.width = 7.5, fig.height = 9, fig.cap = paste0("Change in average forest coverage in South America ", year0, "-", year1, " per administrative area. Country borders added.")>>=
+borders_crop <- my.crop.f(-90, -45, -34, 15, all.borders)
+label_points <- sf::st_point_on_surface(borders_crop)
+my.object <- my.crop.f(-90, -45, -34, 15, my.sf.copy)
+ggplot(my.object) +
   geom_sf(aes(fill = change), color = NA) +
   scale_fill_gradient2(
     low = "red",
     mid = "black",
     high = "blue",
     midpoint = 0,
-    name = "Forest change (%)"
+    name = "Forest cover change (%)  "
   ) +
-  theme_minimal() +
-    labs(title = "Forest coverage change")
+  geom_sf(data = borders_crop,
+          fill = NA,
+          color = "white",
+          linewidth = 0.3) +
+  geom_sf_text(
+    data = label_points,
+    aes(label = COUNTRY),
+    color = "white",
+    size = 3
+  ) +
+    theme_minimal() +
+    theme(legend.position = "top",
+          legend.direction = "horizontal",
+          legend.key.width = unit(1, "cm"),
+          legend.key.height = unit(0.07, "cm"),          
+          legend.title = element_text(size = 13),
+          legend.text = element_text(size = 9)) +
+    labs(title = NULL,
+         x = NULL, y = NULL)
 
 @ 
 
+\bibliography{references}
+
 \end{document}
-
-
