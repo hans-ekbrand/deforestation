@@ -207,27 +207,45 @@ process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_c
   tile_file_with_path <- Reduce(file.path, list(deforestation.path, year, tile_file))
   result.file.name <- paste0(tile_file_with_path, "_results.RDS")
 
-  globallivingconditions::my.log.f(paste(Sys.time(),
-    "process_one_tile_one_year() called to work with tile:",
-    tile_file_with_path), log.file.path)
-    
   # try cached result
   if (file.exists(result.file.name)) {
     vals <- tryCatch(readRDS(result.file.name), error = function(e) NULL)
     if (!is.null(vals)) return(vals)
   }
 
+  ## Only log when working on something new
+  globallivingconditions::my.log.f(paste(Sys.time(),
+    "process_one_tile_one_year() called to work with tile:",
+    tile_file_with_path, "job number:", i), log.file.path)
+    
   hit_idx <- tile_to_poly[[tile_file]]
   if (length(hit_idx) == 0) return(NULL)
 
-  sub_polys <- polys_sf[hit_idx, ]
+    sub_polys <- polys_sf[hit_idx, ]
+    ## some areas in the gadm contain both polygon and multipolygons, e.g.
+    ## BRA.9.128_2, a part of which gave this
+    ## table(sf::st_geometry_type(sub_polys))[c("POLYGON", "MULTIPOLYGON")]
+    ##  POLYGON MULTIPOLYGON 
+    ##      407          129 
+    ## these two lines makes all items multiplygons which is the safe choice that
+    ## can handle areas with islands
+    sub_polys <- sf::st_collection_extract(sub_polys, "POLYGON")
+    sub_polys <- sf::st_cast(sub_polys, "MULTIPOLYGON")
+    if (nrow(sub_polys) == 0L) return(NULL)
 
-  ## All tiles exist, but some are not real TIF files. try() raster() and return NULL if it fails
+    ## All tiles exist, but some are not real TIF files. try() raster() and return NULL if it fails
+    ## No longer true with 5 degrees, some files that would be needed is now not available.
+    if(! file.exists(tile_file_with_path) ) {
+        globallivingconditions::my.log.f(paste(Sys.time(),
+           "process_one_tile_one_year() Returning NULL tile does not exist:",
+           tile_file_with_path, "job number:", i), log.file.path)
+        return(NULL)
+    }
   r <- tryCatch(raster(tile_file_with_path), error = function(s) NULL)
   if (is.null(r)) return(NULL)
   globallivingconditions::my.log.f(paste(Sys.time(),
     "process_one_tile_one_year() successfully rasterized tile:",
-    tile_file_with_path), log.file.path)
+    tile_file_with_path, "for job number:", i), log.file.path)
 
   vals <- exact_extract(r, sub_polys, forest_valid_summary_fun, progress = FALSE)
 
@@ -240,12 +258,15 @@ process_one_tile_one_year <- function(i, jobs, polys_sf, tile_to_poly, poly_id_c
   tmp <- paste0(result.file.name, ".tmp")
   saveRDS(vals, tmp)
     file.rename(tmp, result.file.name)
-    my.files <- list.files(tmpdir, pattern = paste0("_", Sys.getpid(), "_.*\\.tif$"), full.names = TRUE)
-  globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
-    tile_file, "will remove temporary files: ", paste(my.files, collapse = ", ")), log.file.path)
+    my.files <- list.files(tempdir(), pattern = paste0("_", Sys.getpid(), "_.*\\.tif$"), full.names = TRUE)
     ## Clean up any temporary file created by exactextractr.
     if(length(my.files) > 0) {
+  globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
+    tile_file, "will remove temporary files: ", paste(my.files, collapse = ", ")), log.file.path)
         file.remove(my.files)
+    } else {
+  globallivingconditions::my.log.f(paste(Sys.time(), "process_one_tile_one_year() ready with tile:",
+    tile_file, "no temporary files for job number:", i), log.file.path)
     }
   return(vals)
 }
