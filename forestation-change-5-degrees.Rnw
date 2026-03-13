@@ -31,48 +31,21 @@
 \begin{document}
 
 \section{Motivation}
-Over the last 10.000 years, humans have reshaped large portions of the earths surface by cutting down trees and replaced them with crops, substituting forests with farmlands. In 2013 a database of forest coverage and deforestation for the entire earth during during the period 2000-2013 was published \citet{Hansen2013}, and it has been updated regurlarly, the latest version is from 2024. The data points in this database represent very small rectangles, approximately $30\times30 \textrm{m}^2$. Figure \vref{fig:Hansen} is a visualisation of that database. In short, the motivation of this paper and the accompanying data products is to provide forest change data in a format that is easily usable for social scientists.
+Over the last 10.000 years, humans have reshaped large portions of the Earth's surface by cutting down trees and replaced them with crops, substituting forests with farmlands. The last few decades satellite images covering the land surface of the entire globe have been regularly produced. Researchers have developed models that can infer from these satellite images the extent of forest and other types of land and in 2013 a database of forest coverage and deforestation for the entire Earth during the period 2000-2013 was published by \citet{Hansen2013}, and it has been updated regularly \citep{Hansen_GlobalForestChange_2024}. The data points in this database represent very small rectangles, approximately $30\times30 \textrm{m}^2$. Figure \vref{fig:Hansen} is a visualisation of that database. In short, the motivation of this paper and the accompanying data products is to provide forest change data in an aggregated format that is easily usable for social scientists.
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.7\linewidth]{hansen.png}
-    \caption{Visualisation of the Global Forest Change database. Source \citet{Hansen2013}. Green represent stable forests, red is areas with deforestation, blue is new forest and pink is a mix of deforestation followed by new forest growth.}
+    \caption{Visualisation of the Global Forest Change database. Source: Hansen/UMD/Google/USGS/NASA. Green represent stable forests, red is areas with deforestation, blue is new forest and pink is a mix of deforestation followed by new forest growth.}
     \label{fig:Hansen}
 \end{figure}
 
+\section{Spatial aggregation}
+\label{sec:spatial-aggregation}
 
-If you want to explain why deforestation takes place, or the social consequences of deforestation, you need to put the deforestation data in context, and for this purpose you need data aggregated to some socially relevant area unit. A natural choice for such areas are the administrative areas defined by each country. Aggregating time series data for 152 billion tiny rectangles sized 30 by 30 meters to time series data for \num{34325} administrative areas is an essential step towards analyses of causes and consequences of deforestation, but it also a computational and technical challenge. This document both serves as the canonical source for how it was done, and as a manual for how to use the aggregated database.
+If you want to explain \emph{why} deforestation takes place, or describe and explain the \emph{social consequences} of deforestation, you need to put the deforestation data in context, and for this purpose you need data aggregated to some socially relevant area unit. A natural choice for such areas are the administrative areas defined by each country. Aggregating time series data from 152 billion 30×30 m grid cells into \num{34325} administrative areas is essential for analysing the causes and consequences of deforestation. The computational and technical challenges involved motives us to make the results of the aggregation publicly avaible in an accessible format, hence this paper.
 
-
-
-
-
-% \section{Aim}
-% The aim of this article is to document a dataproduct so that it can be used correctly. The data product contains aggregated time-series data on forest coverage and deforestation in between year 2000 and 2023 in 18956 administrative areas in Latin America, Africa and South Asia. The database can be also reconstructed from scratch by running the source code of this document (ref).
-
-In this database, and in this document at large, \emph{forest coverage} has a precise definition: the proportion of the area that is covered by organic structures (trees) that reflects sunlight at least 5 meters above the ground. Deforestation is defined as the decrease in forestation. If an 70 per cent of an area was covered forest at time t0, and at time t1 65 per cent of the area is covered by forest, the deforestation of that area between time t0 and t1 was 5. The recorded deforestation statistic is this \emph{difference in forestation}. If you want to analyse the \emph{relative} deforestation, e.g. by calculating how large percentage of the existing forest at time t0 was lost at time t1, you have to first derive the forestation state at t1 and then take the ratio between forestation at t0 and t1.
-
-
-% The purpose of this document is to test it the new smaller tiles I have created is better for parallellisation on normally configured computers (16 cores, 32 GB of RAM) than the original source files.
-
-% Changes compared to the old code:
-
-% \begin{itemize}
-% \item The code that maps a bbox to set of tiles need to changed using 5 degrees instead of 10 degrees.
-% \item The path is now ``/mnt/windows/Deforestation and poverty - Forest coverage/5 degrees''
-% \item The new smaller tiles can not be downloaded, so inactivate the downloading part (we have countries with some part outside the existing tiles so download would have been triggered with the new 5 degree grid).
-% \item tile\_to\_poly should use my.sf, not my.sf.split
-% \item use years 2005 and 2015 since 2000 and 2020 is not ready yet.
-% \end{itemize}
-
-% What to test: the actual grid with the old job 19 (now four tiles in central africa)
-
-%    year         tile
-%    19 2000 20N\_010E.tif
-
-%    The new files should be 20N\_010E.tif, 15N\_010E.tif, 20N\_015E.tif, 15N\_015E.tif
-
-%% make sure the child document exists before calling it.
+As our primary interest lies in the connections between \emph{deforestation and poverty}, we have focused our computational resources to do the analyses for low- and middle income countries (mainly in Latin America, Africa, and South Asia). In fact, we have used geographical availability of micro data on living conditions from the Demographic and Health Surveys (DHS) to guide the choice of spatial units, making the data product particularly suitable for users of DHS data \citet{Wang2021}. However, the algorithms we have developed are flexible in two ways: (1) they work with any partitioning, (2) they work with any part of the world (not only the southern hemisphere). Given an alternative partitioning of some area of the Earth, quite a bit of disk space, internet access and some computation time, alternative versions of the data products can easily be produced. This document both serves as a manual for how to use the aggregated database, and as the canonical source for how it was done.\footnote{The PDF is build by the same program that produces the data products, and the source code for this program is publicly available here \citep{deforestation_repo}} Figure \ref{fig:full-grid} visualizes the partitioning we developed and based the data product on.
 
 <<opts.chunk.parent, echo = FALSE>>=
 opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE,
@@ -590,7 +563,7 @@ grat <- st_graticule(
 
 @ 
 
-<<full-grid, fig.cap = "The borders of the administrative areas used.", dpi = 400, fig.width=6, fig.height=2.4>>=
+<<full-grid, fig.cap = "Administrative divisions used in the analysis.", dpi = 400, fig.width=6, fig.height=2.4>>=
 library(sf); library(ggplot2)
 ## par(mar = c(0, 0, 0, 0))
 ## plot(st_geometry(full.grid.sf), lwd = 0.05)
@@ -612,8 +585,50 @@ ggplot() +
 
 @ 
 
-%% Borders needed for the next graph.
+\section{Data Source}
+\label{sec:source}
 
+The data we aggregate is \citet{Potapov2022}, which provide high resolution data about land cover and land use change for every 5 year from 2000 to 2020. While \citet{Hansen_GlobalForestChange_2024} provide annual data, with more recent updates, the updates only include forest loss, not forest gain. Forest \emph{gain} data in \citet{Hansen_GlobalForestChange_2024} only cover 2001 - 2012, which makes \citet{Potapov2022} the better choice if both forest loss and forest gain is of interest.
+
+\section{Definitions}
+\label{sec:definitions}
+
+In this database, and in this document at large, \emph{forest coverage} has a precise definition: the percentage of the area that is covered by organic structures (trees) that reflects sunlight at least 5 meters above the ground. We thereby follow the definition developed by \citet{Hansen2013}, but we apply it on another data source.
+
+\emph{change in forestation} is defined as the increase in forestation and we express it in percentage points. If 70 \% of an area was covered forest at time t0, and at time t1 65 \% of the area is covered by forest, the change in forestation of that area between time t0 and t1 was -5. The recorded \emph{change in forestation} statistic is this \emph{difference in forestation}. This difference is the value at t1 minus the value at t0, so a negative value indicates deforestation and a positive value indicate forest gain. Gain is thus here defined only with reference to the extent of area covered by forest, not to the height of the trees in the forest. We explictly mention this because the data source we use, \citet{Potapov2022}, do provide estimated average canopy height, we simply do not use the vertical aspect of forest gain, only the horizontal aspect.
+
+The spatial aggregation does not add any complexity to the definitions involved, the forest coverage of an area is simply the \emph{average value} of all the cells in the orginal source that fall inside the area.
+
+\section{Methods}
+\label{sec:methods}
+
+This section will provide a conceptual overview of the data processing pipeline, without going into technical details of the implementation, see the source code for those \citep{deforestation_repo}.
+
+\subsection{Principles  guiding the partitioning}
+\label{sec:creat-part}
+Almost all countries provide a hierarchy of administrative borders, there are top level regions, which in turn have sub-divisions, which in turn can have their own subdivisions, and these are all made publicly available by the GADM project \citet{Hijmans_GADM_v41}. As a general principle, we start with the finest layer of sub-divisions available for each country. If the country has DHS surveys, then the partitioning in guided by the availability of DHS clusters with GPS coordinates in each area. The aim is to have a partitioning suitable for time series analyses and reasonable minimal set of data points for that is 3. Areas with less than 3 DHS clusters with GPS coordinates in them are thus successively merged with a neighbouring area, ie. an area that shares border, until a partitioning where all areas contain at least 3 DHS clusters. (Explain how we dealed with countries with less than three geolocated DHS surveys). This partitioning is a built in feature of the «R« package «globallivingconditions« \citet{Ekbrand_dhsharmonisation}. For this project, we combined the partitions provided by that R package with the finest layers of sub-divisions for the countries with no DHS surveys.
+
+For countries with only partial coverage by DHS surveys, e.g. Brazil, the finest administrative regions is the most sensible choice since they the data can easily be aggregated to higher levels to fit national statistics. Brazil publishes statistics on living conditions for the 27 the top level regions but the PNAD and PNADC survey programmes have finer geographical resolutions even if the data disclosed to the public does not include those geocodes. 
+
+\subsection{Principles for aggregation}
+\label{sec:princ-aggr}
+
+
+
+To be written.
+
+\section{Dataset description}
+\label{sec:dataset-description}
+
+To be written.
+
+\section{Results}
+\label{sec:results}
+
+We will visualise the reference level, that is the forestation state in year 2000, and the net change, for all \num{34325} administrative areas, and provide additional graphs over some areas of special interest. This section will also show the structure of the dataset.
+
+
+%% Borders needed for the next graph.
 
 <<forest.change.path.to.artifacts>>=
 path.to.artifacts <- "/mnt/windows/Deforestation and poverty - Paper I/"
@@ -641,6 +656,10 @@ my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
 }
 
 @
+
+\subsection{Forest coverage year 2000}
+Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in year 2000.
+
 
 <<forestation, fig.cap = "Average forest coverage in the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
 library(sf); library(ggplot2)
@@ -748,6 +767,8 @@ ggplot(my.object) +
          x = NULL, y = NULL)
 
 @ 
+
+\clearpage
 
 \bibliography{references}
 
