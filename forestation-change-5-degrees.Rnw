@@ -606,16 +606,92 @@ This section will provide a conceptual overview of the data processing pipeline,
 
 \subsection{Principles  guiding the partitioning}
 \label{sec:creat-part}
-Almost all countries provide a hierarchy of administrative borders, there are top level regions, which in turn have sub-divisions, which in turn can have their own subdivisions, and these are all made publicly available by the GADM project \citet{Hijmans_GADM_v41}. As a general principle, we start with the finest layer of sub-divisions available for each country. If the country has DHS surveys, then the partitioning in guided by the availability of DHS clusters with GPS coordinates in each area. The aim is to have a partitioning suitable for time series analyses and reasonable minimal set of data points for that is 3. Areas with less than 3 DHS clusters with GPS coordinates in them are thus successively merged with a neighbouring area, ie. an area that shares border, until a partitioning where all areas contain at least 3 DHS clusters. (Explain how we dealed with countries with less than three geolocated DHS surveys). This partitioning is a built in feature of the «R« package «globallivingconditions« \citet{Ekbrand_dhsharmonisation}. For this project, we combined the partitions provided by that R package with the finest layers of sub-divisions for the countries with no DHS surveys.
-
-For countries with only partial coverage by DHS surveys, e.g. Brazil, the finest administrative regions is the most sensible choice since they the data can easily be aggregated to higher levels to fit national statistics. Brazil publishes statistics on living conditions for the 27 the top level regions but the PNAD and PNADC survey programmes have finer geographical resolutions even if the data disclosed to the public does not include those geocodes. 
+Almost all countries provide a tree-like hierarchy of administrative borders, there are top level regions, which in turn have sub-divisions, which in turn can have their own subdivisions, and these are all made publicly available by the GADM project \citet{Hijmans_GADM_v41}. Most countries uses a hierarcy with two or three levels, and as a general principle, we start with the finest layer of sub-divisions available for each country, but not deeper than level 3. If the country has DHS surveys, then the partitioning is guided by the availability of DHS clusters with GPS coordinates in each area. The aim is to have a partitioning suitable for time series analyses and reasonable minimal set of data points (collected with significant distance in time) is thus 3. Areas with less than 3 time-variant data points are, if possible, successively merged with another incomplete area with which it shares both parent and one border, until a partitioning where all areas contain at least 3 DHS clusters, or no further mergers are possible. The partitioning described above is a built-in feature of the «R« package «globallivingconditions« \citet{Ekbrand_dhsharmonisation}. For this project, we combined the partitions provided by that R package with the finest layers of sub-divisions for the countries with no DHS surveys. For countries with no or only partial coverage by DHS surveys the finest level for administrative areas is the most sensible choice since if aggregation to a higher level is needed to fit national statistics it is easy to achieve using information in the GADM files (the files that describe the lower level areas also include information about their parents in the tree).
 
 \subsection{Principles for aggregation}
 \label{sec:princ-aggr}
 
+To illustrate the principles used for aggregation consider a tiny administrative area for we can actually see the values recorded for each cell in the source data, see figure \vref{fig:sample-area}. The forest coverage is based on the number of valid cells in the area and here we do not include cells that represent ``open surface water'' (values 200-207) or ``Ocean'' (value 254). The second statistic needed is the number of forest cells, cells that represent trees with average canopy height 5m or higher (values 27-48 and 127-48). For cells that only partly intersect with the administrative area, the exact proportion of the cell that is in the area is estimated and used in the cell counts.\footnote{The cell counts are calculated by the R package «exactextractr« \citet{exactextractr}.} The sum of the total cell count can thus be a decimal number. The target statistic average forest coverage is then calculated by dividing the cell count of forest cells with the cell count of valid cells.
 
+<<sample-area, fig.cap = "Illustration of the format of source data and an administrative area.", fig.width = 3, fig.height = 3, fig.align = "center">>=
+library(sf)
+library(ggplot2)
+library(readr)
+library(dplyr)
 
-To be written.
+# --- real bbox -------------------------------------------------------------
+
+bbox <- st_bbox(c(
+  xmin = 0.4260,
+  ymin = 35.8211,
+  xmax = 0.6497,
+  ymax = 35.9913
+), crs = st_crs(my.sf.copy))
+
+# --- 5 x 5 grid ------------------------------------------------------------
+
+grid <- st_make_grid(
+  st_as_sfc(bbox),
+  n = c(6, 6)
+) |>
+  st_sf()
+
+# --- read valid values and colors -----------------------------------------
+
+lut <- read_csv("color-scheme-glclu.csv", show_col_types = FALSE) |>
+  rename(value = 1, hex = 2) |>
+  mutate(
+    hex = trimws(hex),
+    hex = ifelse(hex == "", NA, hex),
+    hex = paste0("#", hex)
+  ) |>
+  filter(!is.na(hex))
+
+# sample only from valid values
+set.seed(1)
+these <- which(sapply(lut[, 2], nchar) == 7)
+grid$value <- sample(lut$value[these], size = nrow(grid), replace = TRUE)
+
+# join the corresponding hex color to each sampled value
+grid <- grid |>
+  left_join(lut, by = "value")
+
+# named vector for scale_fill_manual()
+fill_vals <- setNames(lut$hex, lut$value)
+
+# --- plot -----------------------------------------------------------------
+
+ggplot() +
+  geom_sf(data = grid, aes(fill = factor(value)), colour = "grey40", linewidth = 0.3) +
+    geom_sf(data = my.sf.copy[32034, ], fill = NA, colour = "red", linewidth = 1.1) +
+
+  # black text
+  geom_sf_text(
+    data = grid[grid$value <= 200, ],
+    aes(label = value),
+    colour = "black",
+    size = 3
+  ) +
+
+  # white text for dark cells
+  geom_sf_text(
+    data = grid[grid$value > 200, ],
+    aes(label = value),
+    colour = "white",
+    size = 3
+  ) +
+    
+  scale_fill_manual(values = fill_vals, drop = FALSE) +
+  coord_sf(expand = FALSE) +
+  theme_minimal() +
+    labs(fill = "Value", title = NULL,
+         x = NULL, y = NULL) +
+    theme(legend.position = "none",
+          axis.text = element_text(size = 8))
+
+@ 
+
+The meaning of the values in the source data is given by the legend, see the project page for the source data: \href{https://storage.googleapis.com/earthenginepartners-hansen/GLCLU2000-2020/v2/download.html}{Global Land Cover and Land Use 2000 and 2020}.
 
 \section{Dataset description}
 \label{sec:dataset-description}
@@ -766,6 +842,72 @@ ggplot(my.object) +
     labs(title = NULL,
          x = NULL, y = NULL)
 
+@ 
+
+<<forestation-change-temporary-actually-calc-2000-2010>>=
+library(sf)
+library(raster)
+library(exactextractr)
+library(data.table)
+library(future.apply)
+
+year1 <- 2010
+year0 <- 2000
+out <- compute_forest_share_change(
+  polys_sf = my.sf.split,
+  root_dir = deforestation.path,
+  year0 = year0,
+  year1 = year1,
+  poly_id_col = "region_piece_id",
+  relevant_tile_names = needed_tiles,
+  workers = 8,
+  tile_to_poly = tile_to_poly
+)
+
+## stitch
+my.map <- my.sf.split[c("region", "region_piece_id")]
+setDT(my.map)
+out <- merge(out, my.map)
+my.cols <- setdiff(colnames(out), c("region_piece_id", "region", "geometry"))
+out <- out[, lapply(.SD, sum, na.rm = TRUE), by = region, .SDcols = my.cols]
+
+## Now with the counts in place can calculate proprtions and change
+out[, paste0("share_", year0) := get(paste0("forest_", year0)) / get(paste0("valid_", year0))]
+out[, paste0("share_", year1) := get(paste0("forest_", year1)) / get(paste0("valid_", year1))]
+## last share minus first share gives negative values when there is a net loss of forest
+out[, net_change_pp := get(paste0("share_", year1)) - get(paste0("share_", year0))]
+
+my.sf$change <- NA
+these <- match(out$region, my.sf$region)
+my.sf$change[these] <- out$net_change_pp
+
+var.name.share.year0 <- paste0("share_", year0)
+
+my.sf[[var.name.share.year0]] <- NA
+my.sf[[var.name.share.year0]][these] <- out[[var.name.share.year0]]
+
+@
+
+<<forestation-change-stitch>>=
+library(data.table)
+lazyLoad("cache/forestation-change-temporary-actually-calc-2000-2020_c49abf2cf2094a0663bcf5b5371b6c6b")
+part.1 <- out[, c("region", "share_2000", "share_2020"), ]
+lazyLoad("cache/forestation-change-temporary-actually-calc_1137baa8a934327714a9481e01f175f8")
+part.2 <- out[, c("region", "share_2005", "share_2015"), ]
+lazyLoad("cache/forestation-change-temporary-actually-calc-2000-2010_8d2fb29e998b294037430d7d2ce36e18")
+part.3 <- out[, c("region", "share_2010"), ]
+full.set <- Reduce(merge, list(part.1, part.2, part.3))
+full.set[, forestation.change.2005 := 100 * (share_2005 - share_2000), ]
+full.set[, forestation.change.2010 := 100 * (share_2010 - share_2000), ]
+full.set[, forestation.change.2015 := 100 * (share_2015 - share_2000), ]
+full.set[, forestation.change.2020 := 100 * (share_2020 - share_2000), ]
+full.set[, c("share_2020", "share_2005", "share_2015", "share_2010") := NULL, ]
+setnames(full.set, "share_2000", "forestation.2000")
+full.set[, region := factor(region), ]
+library(sf)
+setDT(my.sf)
+my.sf[, c("change", "share_2005", "share_2000") := NULL, ]
+my.sf <- my.sf[full.set, on = "region"]
 @ 
 
 \clearpage
