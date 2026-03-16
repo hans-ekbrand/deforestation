@@ -36,14 +36,14 @@ Over the last 10.000 years, humans have reshaped large portions of the Earth's s
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.7\linewidth]{hansen.png}
-    \caption{Visualisation of the Global Forest Change database. Source: Hansen/UMD/Google/USGS/NASA. Green represent stable forests, red is areas with deforestation, blue is new forest and pink is a mix of deforestation followed by new forest growth.}
+    \caption{Visualisation of the Global Forest Change database 2000-2024. Source: Hansen/UMD/Google/USGS/NASA. Green represent stable forests, red is areas with deforestation, blue is new forest and pink is a mix of deforestation followed by new forest growth.}
     \label{fig:Hansen}
 \end{figure}
 
 \section{Spatial aggregation}
 \label{sec:spatial-aggregation}
 
-If you want to explain \emph{why} deforestation takes place, or describe and explain the \emph{social consequences} of deforestation, you need to put the deforestation data in context, and for this purpose you need data aggregated to some socially relevant area unit. A natural choice for such areas are the administrative areas defined by each country. Aggregating time series data from 152 billion 30×30 m grid cells into \num{34325} administrative areas is essential for analysing the causes and consequences of deforestation. The computational and technical challenges involved motives us to make the results of the aggregation publicly avaible in an accessible format, hence this paper.
+If you want to explain \emph{why} deforestation takes place, or describe and explain the \emph{social consequences} of deforestation, you need to put the deforestation data in context, and for this purpose you need data aggregated to some socially relevant area unit. A natural choice for such areas are the administrative areas defined by each country. Aggregating time series data from 212 billion 30×30 m grid cells into \num{34325} administrative areas is essential for analysing the causes and consequences of deforestation. The computational and technical challenges involved motives us to make the results of the aggregation publicly available in an accessible format, hence this paper.
 
 As our primary interest lies in the connections between \emph{deforestation and poverty}, we have focused our computational resources to do the analyses for low- and middle income countries (mainly in Latin America, Africa, and South Asia). In fact, we have used geographical availability of micro data on living conditions from the Demographic and Health Surveys (DHS) to guide the choice of spatial units, making the data product particularly suitable for users of DHS data \citet{Wang2021}. However, the algorithms we have developed are flexible in two ways: (1) they work with any partitioning, (2) they work with any part of the world (not only the southern hemisphere). Given an alternative partitioning of some area of the Earth, quite a bit of disk space, internet access and some computation time, alternative versions of the data products can easily be produced. This document both serves as a manual for how to use the aggregated database, and as the canonical source for how it was done.\footnote{The PDF is build by the same program that produces the data products, and the source code for this program is publicly available here \citep{deforestation_repo}} Figure \ref{fig:full-grid} visualizes the partitioning we developed and based the data product on.
 
@@ -595,9 +595,9 @@ The data we aggregate is \citet{Potapov2022}, which provide high resolution data
 
 In this database, and in this document at large, \emph{forest coverage} has a precise definition: the percentage of the area that is covered by organic structures (trees) that reflects sunlight at least 5 meters above the ground. We thereby follow the definition developed by \citet{Hansen2013}, but we apply it on another data source.
 
-\emph{change in forestation} is defined as the increase in forestation and we express it in percentage points. If 70 \% of an area was covered forest at time t0, and at time t1 65 \% of the area is covered by forest, the change in forestation of that area between time t0 and t1 was -5. The recorded \emph{change in forestation} statistic is this \emph{difference in forestation}. This difference is the value at t1 minus the value at t0, so a negative value indicates deforestation and a positive value indicate forest gain. Gain is thus here defined only with reference to the extent of area covered by forest, not to the height of the trees in the forest. We explictly mention this because the data source we use, \citet{Potapov2022}, do provide estimated average canopy height, we simply do not use the vertical aspect of forest gain, only the horizontal aspect.
+\emph{change in forestation} is defined as change in \emph{forest coverage} and we express it in percentage points. If 70 \% of an area was covered forest at time t0, and at time t1 65 \% of the area is covered by forest, the change in forestation of that area between time t0 and t1 was -5. The recorded \emph{change in forestation} statistic is this \emph{difference in forestation}. This difference is the value at t1 minus the value at t0, so a negative value indicates deforestation and a positive value indicate forest gain. Gain is thus here defined only with reference to the extent of area covered by forest, not to the height of the trees in the forest. We explicitly mention this because the data source we use, \citet{Potapov2022}, do provide estimated average canopy height, we simply do not use the vertical aspect of forest gain, only the horizontal aspect.
 
-The spatial aggregation does not add any complexity to the definitions involved, the forest coverage of an area is simply the \emph{average value} of all the cells in the orginal source that fall inside the area.
+The spatial aggregation does not add any complexity to the definitions involved, the forest coverage of an area is simply the \emph{average value} of all the cells in the original source that fall inside the area.
 
 \section{Methods}
 \label{sec:methods}
@@ -606,12 +606,12 @@ This section will provide a conceptual overview of the data processing pipeline,
 
 \subsection{Principles  guiding the partitioning}
 \label{sec:creat-part}
-Almost all countries provide a tree-like hierarchy of administrative borders, there are top level regions, which in turn have sub-divisions, which in turn can have their own subdivisions, and these are all made publicly available by the GADM project \citet{Hijmans_GADM_v41}. Most countries uses a hierarcy with two or three levels, and as a general principle, we start with the finest layer of sub-divisions available for each country, but not deeper than level 3. If the country has DHS surveys, then the partitioning is guided by the availability of DHS clusters with GPS coordinates in each area. The aim is to have a partitioning suitable for time series analyses and reasonable minimal set of data points (collected with significant distance in time) is thus 3. Areas with less than 3 time-variant data points are, if possible, successively merged with another incomplete area with which it shares both parent and one border, until a partitioning where all areas contain at least 3 DHS clusters, or no further mergers are possible. The partitioning described above is a built-in feature of the «R« package «globallivingconditions« \citet{Ekbrand_dhsharmonisation}. For this project, we combined the partitions provided by that R package with the finest layers of sub-divisions for the countries with no DHS surveys. For countries with no or only partial coverage by DHS surveys the finest level for administrative areas is the most sensible choice since if aggregation to a higher level is needed to fit national statistics it is easy to achieve using information in the GADM files (the files that describe the lower level areas also include information about their parents in the tree).
+Almost all countries provide a tree-like hierarchy of administrative borders, there are top level regions, which in turn have sub-divisions, which in turn can have their own subdivisions, and these are all made publicly available by the GADM project \citet{Hijmans_GADM_v41}. Most countries use a hierarchy with two or three levels, and as a general principle, we start with the finest layer of sub-divisions available for each country, but not deeper than level 3. If the country has DHS surveys, then the partitioning is guided by the availability of DHS clusters with GPS coordinates in each area. The aim is to have a partitioning suitable for time series analyses and reasonable minimal set of data points (collected with significant distance in time) is thus 3. Areas with less than 3 time-variant data points are, if possible, successively merged with another incomplete area with which it shares both parent and one border, until a partitioning where all areas contain at least 3 DHS clusters, or no further mergers are possible. The partitioning described above is a built-in feature of the «R« package «globallivingconditions« \citet{Ekbrand_dhsharmonisation}. For this project, we combined the partitions provided by that R package with the finest layers of sub-divisions for the countries with no DHS surveys. For countries with no or only partial coverage by DHS surveys the finest level for administrative areas is the most sensible choice since if aggregation to a higher level is needed to fit national statistics it is easy to achieve using information in the GADM files (the files that describe the lower level areas also include information about their parents in the tree).
 
 \subsection{Principles for aggregation}
 \label{sec:princ-aggr}
 
-To illustrate the principles used for aggregation consider a tiny administrative area for we can actually see the values recorded for each cell in the source data, see figure \vref{fig:sample-area}. The forest coverage is based on the number of valid cells in the area and here we do not include cells that represent ``open surface water'' (values 200-207) or ``Ocean'' (value 254). The second statistic needed is the number of forest cells, cells that represent trees with average canopy height 5m or higher (values 27-48 and 127-48). For cells that only partly intersect with the administrative area, the exact proportion of the cell that is in the area is estimated and used in the cell counts.\footnote{The cell counts are calculated by the R package «exactextractr« \citet{exactextractr}.} The sum of the total cell count can thus be a decimal number. The target statistic average forest coverage is then calculated by dividing the cell count of forest cells with the cell count of valid cells.
+To illustrate the principles used for aggregation consider an artificial example of a tiny administrative area for which we can actually see the values recorded for each cell in the source data, see figure \vref{fig:sample-area}.\footnote{This shape in the example is from an actual administrative area, but the cells size are enlargened and the the values in the cells are randomized.}
 
 <<sample-area, fig.cap = "Illustration of the format of source data and an administrative area.", fig.width = 3, fig.height = 3, fig.align = "center">>=
 library(sf)
@@ -691,18 +691,28 @@ ggplot() +
 
 @ 
 
+The forest coverage is based on the number of valid cells in the area and here we do not include cells that represent ``open surface water'' (values 200-207) or ``Ocean'' (value 254). The second statistic needed is the number of forest cells, cells that represent trees with average canopy height 5m or higher (values 27-48 and 127-148). For cells that only partly intersect with the administrative area, the exact proportion of the cell that is in the area is estimated and used in the cell counts.\footnote{The cell counts are calculated by the R package «exactextractr« \citet{exactextractr}.} The sum of the total cell count can thus be a decimal number. The target statistic average forest coverage is then calculated by dividing the cell count of forest cells with the cell count of valid cells.
+
+$$ \textrm{Average forest coverage} = \frac{\textrm{count of forest cells}}{\textrm{count of valid cells}} $$
+
 The meaning of the values in the source data is given by the legend, see the project page for the source data: \href{https://storage.googleapis.com/earthenginepartners-hansen/GLCLU2000-2020/v2/download.html}{Global Land Cover and Land Use 2000 and 2020}.
 
-\section{Dataset description}
-\label{sec:dataset-description}
+The average valid cell count for the administrative areas is \num{2429552}, and the total number of valid cells are \num{83391942848}.
 
-To be written.
+<<cell.counts, eval = FALSE>>=
+## The problem with cell counts is that they do not account for how
+## lon/lat does not translate to area sizes. When I just use the cell
+## counts I get a net deforestation of 1.72, but the published number
+## in
+## https://gladxfer.umd.edu/users/Potapov/GLCLUC2020/frsen-03-856903.pdf
+## is 2.4. I could calculate the actual areas size, but I wont do that
+## for now. 
 
-\section{Results}
-\label{sec:results}
-
-We will visualise the reference level, that is the forestation state in year 2000, and the net change, for all \num{34325} administrative areas, and provide additional graphs over some areas of special interest. This section will also show the structure of the dataset.
-
+lazyLoad("cache/forestation-change-temporary-actually-calc-2000-2020_c49abf2cf2094a0663bcf5b5371b6c6b")
+prop.2000 <- out[, round(sum(forest_2000) / sum(valid_2000), 4), ]
+prop.2020 <- out[, round(sum(forest_2020) / sum(valid_2020), 4), ]
+change <- prop.2020 - prop.2000
+@ 
 
 %% Borders needed for the next graph.
 
@@ -732,117 +742,6 @@ my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
 }
 
 @
-
-\subsection{Forest coverage year 2000}
-Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in year 2000.
-
-
-<<forestation, fig.cap = "Average forest coverage in the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
-library(sf); library(ggplot2)
-
-ggplot() +
-  # graticule behind polygons
-  geom_sf(data = grat, linewidth = 0.10) +
-
-  geom_sf(data = my.sf.copy,
-          aes(fill = share_2000 * 100),
-          color = NA) +
-  geom_sf(data = all.borders, fill = NA, linewidth = 0.05) +
-
-  # lock extent to the bbox
-  coord_sf(
-    xlim = c(bb["xmin"], bb["xmax"]),
-    ylim = c(bb["ymin"], bb["ymax"]),
-    expand = FALSE
-  ) +
-
-  scale_fill_gradientn(
-    colours = rev(terrain.colors(256)),
-    limits = c(0, 100),
-    name = "Forest coverage (%)  "
-  ) +
-
-  theme_minimal() +
-  theme(
-    panel.grid = element_blank(),
-    legend.position = "top",
-    legend.direction = "horizontal",
-    legend.key.width = unit(1, "cm"),
-    legend.key.height = unit(0.07, "cm"),          
-    legend.text = element_text(size = 7)
-  )
-
-@
-
-<<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage ", year0, "-", year1, " per administrative area."), fig.width=6, fig.height = 3>>=
-library(ggplot2)
-
-ggplot() +
-    ## graticule behind polygons
-    geom_sf(data = grat, linewidth = 0.10) +
-
-    geom_sf(data = my.sf.copy, aes(fill = change), color = NA) +
-
-    ## lock extent to the bbox
-    coord_sf(
-        xlim = c(bb["xmin"], bb["xmax"]),
-        ylim = c(bb["ymin"], bb["ymax"]),
-        expand = FALSE
-    ) +
-
-    scale_fill_gradient2(
-    low = "red",
-    mid = "black",
-    high = "blue",
-    midpoint = 0,
-    name = "Forest coverage change (%)  "
-  ) +
-    theme_minimal() +
-    theme(legend.position = "top",
-          legend.direction = "horizontal",
-          legend.key.width = unit(1, "cm"),
-          legend.key.height = unit(0.07, "cm"),          
-          legend.text = element_text(size = 7)) + 
-    labs(title = NULL)
-
-@
-
-
-
-<<forest-change-south-america, fig.width = 7.5, fig.height = 9, fig.cap = paste0("Change in average forest coverage in South America ", year0, "-", year1, " per administrative area. Country borders added.")>>=
-borders_crop <- my.crop.f(-90, -45, -34, 15, all.borders)
-label_points <- sf::st_point_on_surface(borders_crop)
-my.object <- my.crop.f(-90, -45, -34, 15, my.sf.copy)
-ggplot(my.object) +
-  geom_sf(aes(fill = change), color = NA) +
-  scale_fill_gradient2(
-    low = "red",
-    mid = "black",
-    high = "blue",
-    midpoint = 0,
-    name = "Forest cover change (%)  "
-  ) +
-  geom_sf(data = borders_crop,
-          fill = NA,
-          color = "white",
-          linewidth = 0.3) +
-  geom_sf_text(
-    data = label_points,
-    aes(label = COUNTRY),
-    color = "white",
-    size = 3
-  ) +
-    theme_minimal() +
-    theme(legend.position = "top",
-          legend.direction = "horizontal",
-          legend.key.width = unit(1, "cm"),
-          legend.key.height = unit(0.07, "cm"),          
-          legend.title = element_text(size = 13),
-          legend.text = element_text(size = 9)) +
-    labs(title = NULL,
-         x = NULL, y = NULL)
-
-@ 
 
 <<forestation-change-temporary-actually-calc-2000-2010>>=
 library(sf)
@@ -908,6 +807,200 @@ library(sf)
 setDT(my.sf)
 my.sf[, c("change", "share_2005", "share_2000") := NULL, ]
 my.sf <- my.sf[full.set, on = "region"]
+## regain "SF"-class membership
+my.sf <- st_as_sf(my.sf, sf_column_name = "geometry")
+
+library(future.apply)
+plan(multicore)
+area.sizes <- future_sapply(seq_len(nrow(my.sf)), function(i) {
+    sf_use_s2(FALSE)
+    as.numeric(st_area(my.sf[i, ]))
+}, future.seed=TRUE)
+my.sf$size.km2 <- round(area.sizes / 1e6)
+my.sf$top.level.region.temp <- factor(sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { paste(x[1:2], collapse = ".") }))
+
+my.sf$top.level.region <- factor(sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { paste(x[2], collapse = ".") }))
+library(globallivingconditions)
+country.code <- sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { x[1] })
+only.digits <- which(grepl("^[0-9]+$", country.code))
+country.code[only.digits] <- iso.3166$String.code[match(country.code[only.digits], iso.3166$numeric)]
+my.sf$country <- factor(country.code)
+my.sf$top.level.region <- paste(my.sf$country, my.sf$top.level.region, sep = ".")
+my.dt <- as.data.table(st_drop_geometry(my.sf))  # tabular version
+
+sf::sf_use_s2(FALSE)
+
+@
+
+\section{Dataset description}
+\label{sec:dataset-description}
+
+The data set contains, for \num{32324} administrative areas, their size in square kilometers, the proportion of the area covered by forest in year 2000, the percentage points change in forestation for the years 2005, 2010, 2015 and 2020, the top level region the belong to, and the country the belong to. Table foo gives the variable names used along with the description.
+
+
+
+\section{Results}
+\label{sec:results}
+
+We will visualise the reference level, that is the forestation state in year 2000, and the net change, for all \num{34325} administrative areas, and provide additional graphs over some areas of special interest. This section will also show the structure of the dataset.
+
+\subsection{Forest coverage year 2000}
+Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in year 2000.
+
+
+<<forestation, fig.cap = "Average forest coverage in the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
+library(sf); library(ggplot2)
+
+ggplot() +
+  # graticule behind polygons
+  geom_sf(data = grat, linewidth = 0.10) +
+
+  geom_sf(data = my.sf.copy,
+          aes(fill = share_2000 * 100),
+          color = NA) +
+  geom_sf(data = all.borders, fill = NA, linewidth = 0.05) +
+
+  # lock extent to the bbox
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"]),
+    expand = FALSE
+  ) +
+
+  scale_fill_gradientn(
+    colours = rev(terrain.colors(256)),
+    limits = c(0, 100),
+    name = "Forest coverage (%)  "
+  ) +
+
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.key.width = unit(1, "cm"),
+    legend.key.height = unit(0.07, "cm"),          
+    legend.text = element_text(size = 7)
+  )
+
+@
+
+<<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage ", year0, "-", year1, " per administrative area."), fig.width=6, fig.height = 3>>=
+library(ggplot2)
+
+## Prepare the scaling by finding the largest absolute value
+m <- max(abs(my.sf$forestation.change.2020), na.rm = TRUE)
+
+ggplot() +
+    ## graticule behind polygons
+    geom_sf(data = grat, linewidth = 0.10) +
+
+    ## The actual data
+    geom_sf(data = my.sf, aes(fill = forestation.change.2020), color = NA) +
+
+    ## lock extent to the bbox
+    coord_sf(
+        xlim = c(bb["xmin"], bb["xmax"]),
+        ylim = c(bb["ymin"], bb["ymax"]),
+        expand = FALSE
+    ) +
+
+    ## Country borders
+    geom_sf(data = all.borders, fill = NA, linewidth = 0.05) +
+
+    ## Coloring
+    scale_fill_gradient2(
+        low = "#b2182b",
+        mid = "white",
+        high = "#1a9850",
+        midpoint = 0,
+        limits = c(-m, m),
+        name = "Forest cover change (%)"
+    ) +
+
+    theme_minimal() +
+    theme(legend.position = "top",
+          legend.direction = "horizontal",
+          legend.key.width = unit(1, "cm"),
+          legend.key.height = unit(0.07, "cm"),          
+          legend.text = element_text(size = 7)) + 
+    labs(title = NULL)
+
+@
+
+<<forest-change-south-america, fig.width = 7.5, fig.height = 9, fig.cap = paste0("Change in average forest coverage in South America ", year0, "-", year1, " per administrative area. Country borders added.")>>=
+borders_crop <- my.crop.f(-90, -45, -34, 15, all.borders)
+local.grat <- my.crop.f(-90, -45, -34, 15, grat)
+label_points <- sf::st_point_on_surface(borders_crop)
+my.object <- my.crop.f(-90, -45, -34, 15, my.sf)
+
+## local bb
+bb <- st_bbox(my.object)
+    
+ggplot() +
+
+    ## graticule behind polygons
+    geom_sf(data = local.grat, linewidth = 0.10) +
+
+    ## The actual data
+    geom_sf(data = my.object, aes(fill = forestation.change.2020), color = NA) +
+
+    ## lock extent to the bbox
+    coord_sf(
+        xlim = c(bb["xmin"], bb["xmax"]),
+        ylim = c(bb["ymin"], bb["ymax"]),
+        expand = FALSE
+    ) +
+
+    ## Country borders
+    geom_sf(data = borders_crop,
+          fill = NA,
+          color = "black",
+          linewidth = 0.3) +
+    
+    scale_fill_gradient2(
+        low = "red",
+        mid = "white",
+        high = "blue",
+        midpoint = 0,
+        name = "Forest cover change (%)  "
+    ) +
+
+    geom_sf_text(
+        data = label_points,
+        aes(label = COUNTRY),
+        color = "black",
+        size = 3
+    ) +
+
+    theme_minimal() +
+    theme(legend.position = "top",
+          legend.direction = "horizontal",
+          legend.key.width = unit(1, "cm"),
+          legend.key.height = unit(0.07, "cm"),          
+          legend.title = element_text(size = 13),
+          legend.text = element_text(size = 9)) +
+    labs(title = NULL,
+         x = NULL, y = NULL)
+
+@ 
+
+With the data set in place, we can now ask questions about forestation change in administrative areas, e.g. which administrative areas saw most deforestation?
+
+<<forestation-change-lowest-level, results = "markup">>=
+my.dt[order(forestation.change.2020), ]
+@
+
+Similarly, what top level regions saw most deforestation? To get this measure, we calculate a weighted mean, where each are 
+
+<<forestation-change-top-level-regions, results = "markup">>=
+top.level.regions <- my.dt[, list(country = unique(country), size.km2 = sum(size.km2), forestation.change.2020 = weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), by = top.level.region]
+top.level.regions[order(forestation.change.2020), ]
+@
+
+<<forestation-change-countries, results = "markup">>=
+countries <- top.level.regions[, list(forestation.change.2020 = weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), by = country]
+countries[order(forestation.change.2020), ]
 @ 
 
 \clearpage
