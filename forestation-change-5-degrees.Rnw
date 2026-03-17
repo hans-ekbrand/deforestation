@@ -819,7 +819,7 @@ We will visualise the reference level, that is the forestation state in year 200
 \node[state, right=of f2] (c) {cropland};
 
 \node[state, below=of f2] (f3) {forest};
-\node[state, right=of f3] (s) {built up};
+\node[state, right=of f3] (s) {built-up};
 
 % arrows with inside labels
 \draw[->, bend left=15, trA] (f1) to node[below, sloped, text=transA] {A} (b);
@@ -980,10 +980,163 @@ ggplot() +
 
 @ 
 
-With the data set in place, we can now ask questions about forestation change in administrative areas, e.g. which administrative areas saw most deforestation?
+With the data set in place, we can now ask questions about forestation change in administrative areas, e.g. which administrative areas saw most deforestation and what distribution over the three types of deforestation occured there?
 
 <<forestation-change-lowest-level, results = "markup", eval = FALSE>>=
-my.dt[order(forestation.change.2020), ]
+these.regions <- head(my.dt[order(forestation.change.2020), region, ], n = 10)
+
+## For a given region id, get the full state for year 2000 and the full state for year 2020.
+## find the cells that are instances of any of the six forest transitions
+## for the other cells, use a simplified ledgend:
+
+## stable forest green
+## stable cropland yellow
+## stable builtup grey
+## open surface water (probably stable)
+
+forest_codes <- c(27:48, 127:148)   # >= 5m trees on terra firma + wetlands
+short_vegetation_codes <- c(0:26, 100:126)
+cropland_codes <- c(244)
+water_codes  <- c(200:207, 254)     # open surface water + ocean
+
+## use transparent colors for these three
+
+## find the relevant tiles
+## find the sub polygons in my.sf.split that correspond to this polygon
+
+my.region <- these.regions[1]
+
+my.sub.regions <- which(my.sf.split$region == my.region)
+
+## find the tiles that contains at least one element of my.sub.region
+the.tiles <- names(na.omit(sapply(tile_to_poly, function(x) { match(my.sub.regions, x) })))
+
+## TODO make this works for multiple tiles.
+the.tile <- the.tiles[1]
+
+## For now, just pick the first tile
+my.polygon <- my.sf[which(my.sf$region == my.region), ]
+
+my.rasters <- sapply(c(2000, 2020), function(year) {
+    tile <- file.path(deforestation.path, year, the.tile)
+    r <- terra::rast(tile, win = ext(vect(my.polygon)))
+    return(r)
+})
+
+r1 <- my.rasters[[1]]
+r2 <- my.rasters[[2]]
+
+forest_codes <- c(27:48, 127:148)
+short_vegetation_codes <- c(0:26, 100:126)
+cropland_codes <- 244
+builtup_codes <- 250
+water_codes <- c(200:207, 254)
+
+## Let's start easy: same color scheme as used in Hansen 2013
+
+## 1. stable non-forest: black
+## 2. stable forest: green
+## 3. forestation: blue
+## 4  deforestation: red:
+
+forest_codes <- c(27:48, 127:148)
+all_values <- 0:255
+non_forest_codes <- all_values[-match(forest_codes, all_values)]
+
+out <- r2
+out[r1 %in% non_forest_codes & r2 %in% non_forest_codes] <- 1
+out[r1 %in% forest_codes & r2 %in% forest_codes] <- 2
+out[r1 %in% non_forest_codes & r2 %in% forest_codes] <- 3
+out[r1 %in% forest_codes & r2 %in% non_forest_codes] <- 4
+
+levels(out) <- data.frame(
+  id = 1:4,
+  class = c(
+    "stable non-forest",
+    "stable forest",
+    "non-forest -> forest",
+    "forest -> non-forest"
+  )
+)
+
+coltab(out) <- data.frame(
+  value = 1:4,
+  col = c("black", "green", "blue", "red")
+)
+
+plot(mask(out, my.polygon))
+
+## Try again, with more categories this time
+out <- r2
+
+# Stable
+out[r1 %in% forest_codes & r2 %in% forest_codes] <- 7 
+out[r1 %in% short_vegetation_codes & r2 %in% short_vegetation_codes]  <- 8
+out[r1 %in% cropland_codes & r2 %in% cropland_codes]  <- 9
+out[r1 %in% builtup_codes & r2 %in% builtup_codes]  <- 10
+out[r2 %in% water_codes] <- 11
+
+# Change
+out[r1 %in% forest_codes & r2 %in% short_vegetation_codes] <- 1 # A
+out[r2 %in% forest_codes & r1 %in% short_vegetation_codes] <- 2 # B
+
+out[r1 %in% forest_codes & r2 %in% cropland_codes] <- 3 # C
+out[r2 %in% forest_codes & r1 %in% cropland_codes] <- 4 # D
+
+out[r1 %in% forest_codes & r2 %in% builtup_codes] <- 5 # E
+out[r2 %in% forest_codes & r1 %in% builtup_codes] <- 6 # F
+
+## others (eg. short_vegetation to cropland)
+out[out > 11] <- 12
+
+levels(out) <- data.frame(
+  id = 1:12,
+  class = c(
+      "forest -> short vegetation",
+      "short vegetation -> forest",
+      "forest -> cropland",
+      "cropland -> forest",
+      "forest -> built-up",
+      "built-up -> forest",
+      "stable forest",
+      "stable short vegetation",
+      "stable cropland",
+      "stable built-up",
+      "water",
+      "other"
+  )
+)
+
+## \definecolor{transA}{RGB}{52,122,183}   % blue
+## \definecolor{transB}{RGB}{46,168,153}   % teal
+## \definecolor{transC}{RGB}{230,126,34}   % orange
+## \definecolor{transD}{RGB}{155,89,182}   % purple
+
+## \definecolor{transE}{RGB}{120,110,100}  % muted brown-gray
+## \definecolor{transF}{RGB}{120,140,60}   % olive
+
+coltab(out) <- data.frame(
+  value = 1:12,
+  col = c(rgb(52,122,183, maxColorValue=255),
+          rgb(46,168,153, maxColorValue=255),
+          rgb(230,126,34, maxColorValue=255),
+          rgb(155,89,182, maxColorValue=255),
+          rgb(120,110,100, maxColorValue=255),
+          rgb(120,140,60, maxColorValue=255),
+          rgb(0, 255, 0, 128, maxColorValue=255),
+          rgb(255, 255, 128, 128, maxColorValue=255),
+          rgb(255, 255, 0, 128, maxColorValue=255),
+          rgb(255, 255, 255, 128, maxColorValue=255),
+          rgb(0, 0, 255, maxColorValue=255),
+          rgb(255, 255, 255, 0.2, maxColorValue=255)
+          )
+  )
+
+plot(mask(out, my.polygon))
+
+
+
+
 @
 
 Similarly, what top level regions saw most deforestation? To get this measure, we calculate a weighted mean, where each are 
