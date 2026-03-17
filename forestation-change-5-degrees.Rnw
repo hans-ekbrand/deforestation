@@ -24,6 +24,19 @@
   skip=12pt
 }
 
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+
+\usepackage{xcolor}
+
+\definecolor{transA}{RGB}{52,122,183}   % blue
+\definecolor{transB}{RGB}{46,168,153}   % teal
+\definecolor{transC}{RGB}{230,126,34}   % orange
+\definecolor{transD}{RGB}{155,89,182}   % purple
+
+\definecolor{transE}{RGB}{120,110,100}  % muted brown-gray
+\definecolor{transF}{RGB}{120,140,60}   % olive
+
 %% make a single « start and end a chunk of \texttt{}, and two «« to represent the literal «.
 \catcode`«=\active
 \def«#1«{\texttt{#1}}
@@ -462,88 +475,89 @@ library(exactextractr)
 library(data.table)
 library(future.apply)
 
-year1 <- 2015
-year0 <- 2005
-out <- compute_forest_share_change(
-  polys_sf = my.sf.split,
-  root_dir = deforestation.path,
-  year0 = year0,
-  year1 = year1,
-  poly_id_col = "region_piece_id",
-  relevant_tile_names = needed_tiles,
-  workers = 8,
-  tile_to_poly = tile_to_poly
-)
+compute_forest_share_change.outer <- function(year0, year1) {
+    out <- compute_forest_share_change(
+        polys_sf = my.sf.split,
+        root_dir = deforestation.path,
+        year0 = year0,
+        year1 = year1,
+        poly_id_col = "region_piece_id",
+        relevant_tile_names = needed_tiles,
+        workers = 8,
+        tile_to_poly = tile_to_poly
+    )
 
-## stitch
-my.map <- my.sf.split[c("region", "region_piece_id")]
-setDT(my.map)
-out <- merge(out, my.map)
-my.cols <- setdiff(colnames(out), c("region_piece_id", "region", "geometry"))
-out <- out[, lapply(.SD, sum, na.rm = TRUE), by = region, .SDcols = my.cols]
+    ## stitch
+    my.map <- my.sf.split[c("region", "region_piece_id")]
+    setDT(my.map)
+    out <- merge(out, my.map)
+    my.cols <- setdiff(colnames(out), c("region_piece_id", "region", "geometry"))
+    out <- out[, lapply(.SD, sum, na.rm = TRUE), by = region, .SDcols = my.cols]
 
-## Now with the counts in place can calculate proprtions and change
-out[, paste0("share_", year0) := get(paste0("forest_", year0)) / get(paste0("valid_", year0))]
-out[, paste0("share_", year1) := get(paste0("forest_", year1)) / get(paste0("valid_", year1))]
-## last share minus first share gives negative values when there is a net loss of forest
-out[, net_change_pp := get(paste0("share_", year1)) - get(paste0("share_", year0))]
+    ## Now with the counts in place can calculate proportions
+    out[, paste0("share_", year0) := get(paste0("forest_", year0)) / get(paste0("valid_", year0))]
+    out[, paste0("share_", year1) := get(paste0("forest_", year1)) / get(paste0("valid_", year1))]
+    return(out)
+}
 
-my.sf$change <- NA
-these <- match(out$region, my.sf$region)
-my.sf$change[these] <- out$net_change_pp
-
-var.name.share.year0 <- paste0("share_", year0)
-
-my.sf[[var.name.share.year0]] <- NA
-my.sf[[var.name.share.year0]][these] <- out[[var.name.share.year0]]
+res.2005.2015 <- compute_forest_share_change.outer(year0 = 2005, year1=2015)
 
 @
 
 <<forestation-change-temporary-actually-calc-2000-2020>>=
-library(sf)
-library(raster)
-library(exactextractr)
-library(data.table)
-library(future.apply)
-
-year1 <- 2020
-year0 <- 2000
-out <- compute_forest_share_change(
-  polys_sf = my.sf.split,
-  root_dir = deforestation.path,
-  year0 = year0,
-  year1 = year1,
-  poly_id_col = "region_piece_id",
-  relevant_tile_names = needed_tiles,
-  workers = 8,
-  tile_to_poly = tile_to_poly
-)
-
-## stitch
-my.map <- my.sf.split[c("region", "region_piece_id")]
-setDT(my.map)
-out <- merge(out, my.map)
-my.cols <- setdiff(colnames(out), c("region_piece_id", "region", "geometry"))
-out <- out[, lapply(.SD, sum, na.rm = TRUE), by = region, .SDcols = my.cols]
-
-## Now with the counts in place can calculate proprtions and change
-out[, paste0("share_", year0) := get(paste0("forest_", year0)) / get(paste0("valid_", year0))]
-out[, paste0("share_", year1) := get(paste0("forest_", year1)) / get(paste0("valid_", year1))]
-## last share minus first share gives negative values when there is a net loss of forest
-out[, net_change_pp := get(paste0("share_", year1)) - get(paste0("share_", year0))]
-
-my.sf$change <- NA
-these <- match(out$region, my.sf$region)
-my.sf$change[these] <- out$net_change_pp
-
-var.name.share.year0 <- paste0("share_", year0)
-
-my.sf[[var.name.share.year0]] <- NA
-my.sf[[var.name.share.year0]][these] <- out[[var.name.share.year0]]
+res.2000.2020 <- compute_forest_share_change.outer(year0 = 2000, year1=2020)
+res.2000.2010 <- compute_forest_share_change.outer(year0 = 2000, year1=2010)
 
 @
 
-<<forestation-change-cosmetic>>=
+<<stitch>>=
+library(data.table)
+part.1 <- res.2000.2020[, c("region", "share_2000", "share_2020"), ]
+part.2 <- res.2005.2015[, c("region", "share_2005", "share_2015"), ]
+part.3 <- res.2000.2010[, c("region", "share_2010"), ]
+full.set <- Reduce(merge, list(part.1, part.2, part.3))
+full.set[, forestation.change.2005 := 100 * (share_2005 - share_2000), ]
+full.set[, forestation.change.2010 := 100 * (share_2010 - share_2000), ]
+full.set[, forestation.change.2015 := 100 * (share_2015 - share_2000), ]
+full.set[, forestation.change.2020 := 100 * (share_2020 - share_2000), ]
+full.set[, c("share_2020", "share_2005", "share_2015", "share_2010") := NULL, ]
+setnames(full.set, "share_2000", "forestation.2000")
+## use per cent rather than proportion also for forestation.2000
+full.set[, forestation.2000 := 100 * forestation.2000, ]
+full.set[, region := factor(region), ]
+library(sf)
+setDT(my.sf)
+my.sf[, c("change", "share_2005", "share_2000") := NULL, ]
+my.sf <- my.sf[full.set, on = "region"]
+## regain "SF"-class membership
+my.sf <- st_as_sf(my.sf, sf_column_name = "geometry")
+
+## Add sizes
+library(future.apply)
+plan(multicore)
+area.sizes <- future_sapply(seq_len(nrow(my.sf)), function(i) {
+    sf_use_s2(FALSE)
+    as.numeric(st_area(my.sf[i, ]))
+}, future.seed=TRUE)
+my.sf$size.km2 <- round(area.sizes / 1e6)
+
+## Derive top level region and country
+my.sf$top.level.region.temp <- factor(sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { paste(x[1:2], collapse = ".") }))
+my.sf$top.level.region <- factor(sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { paste(x[2], collapse = ".") }))
+library(globallivingconditions)
+country.code <- sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { x[1] })
+only.digits <- which(grepl("^[0-9]+$", country.code))
+country.code[only.digits] <- iso.3166$String.code[match(country.code[only.digits], iso.3166$numeric)]
+my.sf$country <- factor(country.code)
+my.sf$top.level.region <- factor(paste(my.sf$country, my.sf$top.level.region, sep = "."))
+my.sf$top.level.region.temp <- NULL
+
+## Make a data.table.version, for easy selections
+my.dt <- as.data.table(st_drop_geometry(my.sf))
+
+@ 
+
+<<forestation-change-cosmetic, eval = FALSE>>=
 ## Set areas with "no valid cells" to "no change" rather than NA which will just show up as grey dots in the maps
 my.sf.copy <- my.sf
 these <- which(is.na(my.sf.copy$change))
@@ -552,11 +566,11 @@ my.sf.copy$change[these] <- 0
 @
 
 <<properly.sized.grid.with.graticules>>=
-bb <- st_bbox(my.sf.copy)
+bb <- st_bbox(my.sf)
 
 grat <- st_graticule(
   x = bb,
-  crs = st_crs(my.sf.copy),
+  crs = st_crs(my.sf),
   lon = seq(floor(bb["xmin"]/50)*50, ceiling(bb["xmax"]/50)*50, by = 50),
   lat = seq(floor(bb["ymin"]/20)*20, ceiling(bb["ymax"]/20)*20, by = 20)
 )
@@ -572,7 +586,7 @@ ggplot() +
     ## graticule behind polygons
     geom_sf(data = grat, linewidth = 0.10) +
     ## The adminiatrative borders
-    geom_sf(data = my.sf.copy, fill = "white", linewidth = 0.05) + 
+    geom_sf(data = my.sf, fill = "white", linewidth = 0.05) + 
 
     ## lock extent to the bbox
     coord_sf(
@@ -626,7 +640,7 @@ bbox <- st_bbox(c(
   ymin = 35.8211,
   xmax = 0.6497,
   ymax = 35.9913
-), crs = st_crs(my.sf.copy))
+), crs = st_crs(my.sf))
 
 # --- 5 x 5 grid ------------------------------------------------------------
 
@@ -659,11 +673,22 @@ grid <- grid |>
 # named vector for scale_fill_manual()
 fill_vals <- setNames(lut$hex, lut$value)
 
+## find the polygon that is inside the bbox (my.sf may have been re-ordered)
+## convert bbox to polygon
+bbox_poly <- st_as_sfc(bbox)
+## find which polygons are fully within the bbox
+## Temporary turn off s2.
+old <- sf::sf_use_s2()
+sf::sf_use_s2(FALSE)
+inside <- st_within(my.sf, bbox_poly, sparse = FALSE)[, 1]
+this <- which(inside)
+sf::sf_use_s2(old)
+
 # --- plot -----------------------------------------------------------------
 
 ggplot() +
   geom_sf(data = grid, aes(fill = factor(value)), colour = "grey40", linewidth = 0.3) +
-    geom_sf(data = my.sf.copy[32034, ], fill = NA, colour = "red", linewidth = 1.1) +
+    geom_sf(data = my.sf[this, ], fill = NA, colour = "red", linewidth = 1.1) +
 
   # black text
   geom_sf_text(
@@ -695,24 +720,7 @@ The forest coverage is based on the number of valid cells in the area and here w
 
 $$ \textrm{Average forest coverage} = \frac{\textrm{count of forest cells}}{\textrm{count of valid cells}} $$
 
-The meaning of the values in the source data is given by the legend, see the project page for the source data: \href{https://storage.googleapis.com/earthenginepartners-hansen/GLCLU2000-2020/v2/download.html}{Global Land Cover and Land Use 2000 and 2020}.
-
-The average valid cell count for the administrative areas is \num{2429552}, and the total number of valid cells are \num{83391942848}.
-
-<<cell.counts, eval = FALSE>>=
-## The problem with cell counts is that they do not account for how
-## lon/lat does not translate to area sizes. When I just use the cell
-## counts I get a net deforestation of 1.72, but the published number
-## in
-## https://gladxfer.umd.edu/users/Potapov/GLCLUC2020/frsen-03-856903.pdf
-## is 2.4. I could calculate the actual areas size, but I wont do that
-## for now. 
-
-lazyLoad("cache/forestation-change-temporary-actually-calc-2000-2020_c49abf2cf2094a0663bcf5b5371b6c6b")
-prop.2000 <- out[, round(sum(forest_2000) / sum(valid_2000), 4), ]
-prop.2020 <- out[, round(sum(forest_2020) / sum(valid_2020), 4), ]
-change <- prop.2020 - prop.2000
-@ 
+The meaning of the values in the source data is given by the legend, see the project page for the source data: \href{https://storage.googleapis.com/earthenginepartners-hansen/GLCLU2000-2020/v2/download.html}{Global Land Cover and Land Use 2000 and 2020}. The average valid cell count for the administrative areas is \num{2429552}, and the total number of valid cells are \num{83391942848}.
 
 %% Borders needed for the next graph.
 
@@ -742,111 +750,94 @@ my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
 }
 
 @
-
-<<forestation-change-temporary-actually-calc-2000-2010>>=
-library(sf)
-library(raster)
-library(exactextractr)
-library(data.table)
-library(future.apply)
-
-year1 <- 2010
-year0 <- 2000
-out <- compute_forest_share_change(
-  polys_sf = my.sf.split,
-  root_dir = deforestation.path,
-  year0 = year0,
-  year1 = year1,
-  poly_id_col = "region_piece_id",
-  relevant_tile_names = needed_tiles,
-  workers = 8,
-  tile_to_poly = tile_to_poly
-)
-
-## stitch
-my.map <- my.sf.split[c("region", "region_piece_id")]
-setDT(my.map)
-out <- merge(out, my.map)
-my.cols <- setdiff(colnames(out), c("region_piece_id", "region", "geometry"))
-out <- out[, lapply(.SD, sum, na.rm = TRUE), by = region, .SDcols = my.cols]
-
-## Now with the counts in place can calculate proprtions and change
-out[, paste0("share_", year0) := get(paste0("forest_", year0)) / get(paste0("valid_", year0))]
-out[, paste0("share_", year1) := get(paste0("forest_", year1)) / get(paste0("valid_", year1))]
-## last share minus first share gives negative values when there is a net loss of forest
-out[, net_change_pp := get(paste0("share_", year1)) - get(paste0("share_", year0))]
-
-my.sf$change <- NA
-these <- match(out$region, my.sf$region)
-my.sf$change[these] <- out$net_change_pp
-
-var.name.share.year0 <- paste0("share_", year0)
-
-my.sf[[var.name.share.year0]] <- NA
-my.sf[[var.name.share.year0]][these] <- out[[var.name.share.year0]]
-
-@
-
-<<forestation-change-stitch>>=
-library(data.table)
-lazyLoad("cache/forestation-change-temporary-actually-calc-2000-2020_c49abf2cf2094a0663bcf5b5371b6c6b")
-part.1 <- out[, c("region", "share_2000", "share_2020"), ]
-lazyLoad("cache/forestation-change-temporary-actually-calc_1137baa8a934327714a9481e01f175f8")
-part.2 <- out[, c("region", "share_2005", "share_2015"), ]
-lazyLoad("cache/forestation-change-temporary-actually-calc-2000-2010_8d2fb29e998b294037430d7d2ce36e18")
-part.3 <- out[, c("region", "share_2010"), ]
-full.set <- Reduce(merge, list(part.1, part.2, part.3))
-full.set[, forestation.change.2005 := 100 * (share_2005 - share_2000), ]
-full.set[, forestation.change.2010 := 100 * (share_2010 - share_2000), ]
-full.set[, forestation.change.2015 := 100 * (share_2015 - share_2000), ]
-full.set[, forestation.change.2020 := 100 * (share_2020 - share_2000), ]
-full.set[, c("share_2020", "share_2005", "share_2015", "share_2010") := NULL, ]
-setnames(full.set, "share_2000", "forestation.2000")
-full.set[, region := factor(region), ]
-library(sf)
-setDT(my.sf)
-my.sf[, c("change", "share_2005", "share_2000") := NULL, ]
-my.sf <- my.sf[full.set, on = "region"]
-## regain "SF"-class membership
-my.sf <- st_as_sf(my.sf, sf_column_name = "geometry")
-
-library(future.apply)
-plan(multicore)
-area.sizes <- future_sapply(seq_len(nrow(my.sf)), function(i) {
-    sf_use_s2(FALSE)
-    as.numeric(st_area(my.sf[i, ]))
-}, future.seed=TRUE)
-my.sf$size.km2 <- round(area.sizes / 1e6)
-my.sf$top.level.region.temp <- factor(sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { paste(x[1:2], collapse = ".") }))
-
-my.sf$top.level.region <- factor(sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { paste(x[2], collapse = ".") }))
-library(globallivingconditions)
-country.code <- sapply(strsplit(my.sf$region, ".", fixed = TRUE), function(x) { x[1] })
-only.digits <- which(grepl("^[0-9]+$", country.code))
-country.code[only.digits] <- iso.3166$String.code[match(country.code[only.digits], iso.3166$numeric)]
-my.sf$country <- factor(country.code)
-my.sf$top.level.region <- paste(my.sf$country, my.sf$top.level.region, sep = ".")
-my.dt <- as.data.table(st_drop_geometry(my.sf))  # tabular version
-
-sf::sf_use_s2(FALSE)
-
-@
-
 \section{Dataset description}
 \label{sec:dataset-description}
 
-The data set contains, for \num{32324} administrative areas, their size in square kilometers, the proportion of the area covered by forest in year 2000, the percentage points change in forestation for the years 2005, 2010, 2015 and 2020, the top level region the belong to, and the country the belong to. Table foo gives the variable names used along with the description.
+The data set contains, for \num{32324} administrative areas, their size in square kilometers, the proportion of the area covered by forest in year 2000, the percentage points change in forestation for the years 2005, 2010, 2015 and 2020, the top level region the belong to, and the country the belong to. Table \ref{tab:structure} gives the variable names used along with a description.
 
-
+\begin{table}[htbp]
+    \centering
+    \caption{The structure of the dataset}
+    \label{tab:structure}
+    \begin{tabular}{lp{9cm}}
+      \toprule
+      Variable name & Description \\
+      \midrule
+      region & A unique string identifier build by concatenating 3 parts, separated by a dot:
+               (1) A country code according to ISO 3166 (numeric for the countries with DHS coverage, letters otherwise); (2) The top level region name; (3) the name of the administrative area(s) If the area is a result of mergers all area names are included, separated by a ``+'', e.g. ``116.Kâmpôt.Kampot.Koun Satv + Trapeang sangkae`` for a row representing Cambodia (numeric code 116), top level region ``Kâmpôt'' and resulting from merging the two areas ``Koun Satv'' and ``Trapeang sangkae''\\
+      forestation.2000 & the proportion of the area covered by forest in year 2000 (range:0-1) \\
+      forestation.2005 & the percentage units change in forestation between year 2000 and year 2005 (theoretical range: -100 - 100)\\
+      forestation.2010 & the percentage units change in forestation between year 2000 and year 2010 \\
+      forestation.2015 & the percentage units change in forestation between year 2000 and year 2015 \\
+      forestation.2020 & the percentage units change in forestation between year 2000 and year 2020 \\
+      size.km2 & the size of the area in square kilometers \\
+      top.level.region & name of the top level region (same as the second field in ``region'' above) \\
+      country & the country name according to the ISO 3166 \\
+      \bottomrule
+    \end{tabular}
+\end{table}
 
 \section{Results}
 \label{sec:results}
 
-We will visualise the reference level, that is the forestation state in year 2000, and the net change, for all \num{34325} administrative areas, and provide additional graphs over some areas of special interest. This section will also show the structure of the dataset.
+We will visualise the reference level, that is the forestation state in year 2000, and the net change, for \num{34324} administrative areas. While the full potential of use cases involves linking the data set to external data sets, we can identify areas with the most deforestation, aggregate the forestation change statistic to top level regions in countries, and identify top level regions of interest. Once a interesting area, or top level region, is found, we can also provide more detailed information about the changes in forest states in this area, in particular we can quantify the six different transition to and from the state ``forest'' given in figure \vref{fig:transitions}.
+
+\tikzset{
+  trA/.style={draw=transA, very thick},
+  trB/.style={draw=transB, very thick},
+  trC/.style={draw=transC, very thick},
+  trD/.style={draw=transD, very thick},
+  trE/.style={draw=transE, very thick},
+  trF/.style={draw=transF, very thick}
+}
+
+\begin{figure}
+  \centering
+
+\begin{tikzpicture}[
+  node distance=10mm and 35mm,
+  state/.style={
+    draw,
+    rounded corners,
+    minimum width=3.2cm,
+    minimum height=8mm,
+    align=center
+  },
+  lab/.style={
+    font=\small,
+    fill=white,
+    inner sep=1pt
+  },
+  >={Latex}
+]
+
+% nodes
+\node[state] (f1) {forest};
+\node[state, right=of f1] (b) {short vegetation cover};
+
+\node[state, below=of f1] (f2) {forest};
+\node[state, right=of f2] (c) {cropland};
+
+\node[state, below=of f2] (f3) {forest};
+\node[state, right=of f3] (s) {built up};
+
+% arrows with inside labels
+\draw[->, bend left=15, trA] (f1) to node[below, sloped, text=transA] {A} (b);
+\draw[->, bend left=15, trB] (b) to node[above, sloped, text=transB] {B} (f1);
+
+\draw[->, bend left=15, trC] (f2) to node[below, sloped, text=transC] {C} (c);
+\draw[->, bend left=15, trD] (c) to node[above, sloped, text=transD] {D} (f2);
+
+\draw[->, bend left=15, trE] (f3) to node[below, sloped, text=transE] {E} (s);
+\draw[->, bend left=15, trF] (s) to node[above, sloped, text=transF] {F} (f3);
+
+\end{tikzpicture}
+\caption{Six transitions to and from the state ``forest''. ``A'' represents deforestation, forest to short vegetation cover, while ``B'' is the inverse: transition from short vegetation cover to forest, ie. forestation. B, D and F represents way that forestation can \emph{increase}, while A, C and E are variants of \emph{deforestation}.}
+\label{fig:transitions}
+\end{figure}
 
 \subsection{Forest coverage year 2000}
-Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in year 2000.
-
+Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in year 2000. The main points of including it is show that (a) even if only the averages are used for each area, the areas are so small that the figure show quite a lot of detail and (b) to provide a way to visually confirm that the aggregation algorithm appears to be correct.
 
 <<forestation, fig.cap = "Average forest coverage in the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
 library(sf); library(ggplot2)
@@ -855,8 +846,8 @@ ggplot() +
   # graticule behind polygons
   geom_sf(data = grat, linewidth = 0.10) +
 
-  geom_sf(data = my.sf.copy,
-          aes(fill = share_2000 * 100),
+  geom_sf(data = my.sf,
+          aes(fill = forestation.2000),
           color = NA) +
   geom_sf(data = all.borders, fill = NA, linewidth = 0.05) +
 
@@ -885,7 +876,11 @@ ggplot() +
 
 @
 
-<<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage ", year0, "-", year1, " per administrative area."), fig.width=6, fig.height = 3>>=
+\subsection{Forestation change 2000-2020}
+
+Figure \vref{fig:forestation-change-temporary-5-degrees} shows the change in average forest coverage for all administrative areas.
+
+<<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage 2000-2020 per administrative area. Country borders added."), fig.width=6, fig.height = 3, dpi = 400>>=
 library(ggplot2)
 
 ## Prepare the scaling by finding the largest absolute value
@@ -928,7 +923,7 @@ ggplot() +
 
 @
 
-<<forest-change-south-america, fig.width = 7.5, fig.height = 9, fig.cap = paste0("Change in average forest coverage in South America ", year0, "-", year1, " per administrative area. Country borders added.")>>=
+<<forest-change-south-america, fig.width = 7.5, fig.height = 9, fig.cap = paste0("Change in average forest coverage in South America ", year0, "-", year1, " per administrative area. Country borders added."), eval = FALSE>>=
 borders_crop <- my.crop.f(-90, -45, -34, 15, all.borders)
 local.grat <- my.crop.f(-90, -45, -34, 15, grat)
 label_points <- sf::st_point_on_surface(borders_crop)
@@ -987,18 +982,18 @@ ggplot() +
 
 With the data set in place, we can now ask questions about forestation change in administrative areas, e.g. which administrative areas saw most deforestation?
 
-<<forestation-change-lowest-level, results = "markup">>=
+<<forestation-change-lowest-level, results = "markup", eval = FALSE>>=
 my.dt[order(forestation.change.2020), ]
 @
 
 Similarly, what top level regions saw most deforestation? To get this measure, we calculate a weighted mean, where each are 
 
-<<forestation-change-top-level-regions, results = "markup">>=
+<<forestation-change-top-level-regions, results = "markup", eval = FALSE>>=
 top.level.regions <- my.dt[, list(country = unique(country), size.km2 = sum(size.km2), forestation.change.2020 = weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), by = top.level.region]
 top.level.regions[order(forestation.change.2020), ]
 @
 
-<<forestation-change-countries, results = "markup">>=
+<<forestation-change-countries, results = "markup", eval = FALSE>>=
 countries <- top.level.regions[, list(forestation.change.2020 = weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), by = country]
 countries[order(forestation.change.2020), ]
 @ 
