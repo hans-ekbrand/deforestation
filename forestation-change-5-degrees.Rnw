@@ -763,8 +763,8 @@ The data set contains, for \num{32324} administrative areas, their size in squar
       \toprule
       Variable name & Description \\
       \midrule
-      region & A unique string identifier build by concatenating 3 parts, separated by a dot:
-               (1) A country code according to ISO 3166 (numeric for the countries with DHS coverage, letters otherwise); (2) The top level region name; (3) the name of the administrative area(s) If the area is a result of mergers all area names are included, separated by a ``+'', e.g. ``116.Kâmpôt.Kampot.Koun Satv + Trapeang sangkae`` for a row representing Cambodia (numeric code 116), top level region ``Kâmpôt'' and resulting from merging the two areas ``Koun Satv'' and ``Trapeang sangkae''\\
+      region & A unique string identifier build by concatenating 3 or 4 parts, separated by a dot:
+               (1) A country code according to ISO 3166 (numeric for the countries with DHS coverage, letters otherwise); (2) The top level region name; (3, optional) The second level region name, only included if all the country provides a hierarchy of more than two levels; (last) the name of the administrative area(s) If the area is a result of mergers all area names are included, separated by a ``+'', e.g. ``116.Kâmpôt.Kampot.Koun Satv + Trapeang sangkae`` for a row representing Cambodia (numeric code 116), top level region ``Kâmpôt'' and resulting from merging the two areas ``Koun Satv'' and ``Trapeang sangkae''\\
       forestation.2000 & the proportion of the area covered by forest in year 2000 (range:0-1) \\
       forestation.2005 & the percentage units change in forestation between year 2000 and year 2005 (theoretical range: -100 - 100)\\
       forestation.2010 & the percentage units change in forestation between year 2000 and year 2010 \\
@@ -987,12 +987,13 @@ library(sf); library(terra); library(data.table); library(xtable)
 these.regions <- head(my.dt[order(forestation.change.2020), region, ], n = 3)
 foo <- my.dt[region %in% these.regions, list(region, f.2000 = round(forestation.2000, 1), fc.2020 = round(forestation.change.2020,1), size.km2), ]
 foo <- foo[order(fc.2020), ]
-print(xtable(foo, digits = c(0, 0, 1, 1, 0), caption = "The three administrative areas with the largest level of deforestation."),
+print(xtable(foo, digits = c(0, 0, 1, 1, 0), caption = "The three administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
+             label = "tab:highest"),
       include.rownames = FALSE, booktabs = TRUE)
 
 @ 
 
-<<forestation-change-lowest-level-example, fig.cap = "What did the lost forest turn into? ">>=
+<<forestation-change-lowest-level-example, fig.cap = "An example of a more detailed breakdown of land cover change based on the area in the top row in table \\ref{tab:highest}. The upper graph shows only the extent of deforestation (which is this case is about 77 percentage points). The bottom graph shows, amongst other things, the type of land use that replaced the forest: mostly cropland but also short vegetation, for exact numbers, see table \\vref{tab:example-table}.", fig.width = 6, fig.height = 6>>=
 library(sf); library(terra); library(data.table)
 
 ## For a given region id, get the full state for year 2000 and the full state for year 2020.
@@ -1159,18 +1160,115 @@ colnames(my.df) <- c("state or transition", "per cent")
 my.df$type <- c("C", "A", "", "", "", "E", "", "", "B", "D")
 my.df <- my.df[, c(3, 1, 2)]
 
-op <- par(mfrow = c(2, 2), mar = c(3, 3, 2, 5))  # 2 rows, 2 cols
-plot(mask(r1, my.polygon), main = "Land cover 2000")
-plot(mask(r2, my.polygon), main = "Land cover 2020")
+op <- par(mfrow = c(2, 1), mar = c(3, 3, 2, 5))  # 2 rows, 2 cols
+## plot(mask(r1, my.polygon), main = "Land cover 2000")
+## plot(mask(r2, my.polygon), main = "Land cover 2020")
 plot(mask(r3, my.polygon), main = "Simple Forestation change")
 plot(mask(r4, my.polygon), main = "Detailed Forestation change")
 par(op)
 
 @
 
+<<stats.from.polygon>>=
+stats.from.polygon <- function(my.region){
+
+    library(sf); library(terra); library(data.table)
+
+    ## For a given region id, get the full state for year 2000 and the full state for year 2020.
+    ## find the cells that are instances of any of the six forest transitions
+    ## for the other cells, use a simplified ledgend:
+
+    forest_codes <- c(27:48, 127:148)   # >= 5m trees on terra firma + wetlands
+    short_vegetation_codes <- c(0:26, 100:126)
+    cropland_codes <- c(244)
+    forest_codes <- c(27:48, 127:148)
+    builtup_codes <- 250
+    water_codes  <- c(200:207, 254)     # open surface water + ocean
+
+    ## find the relevant tiles
+    ## find the sub polygons in my.sf.split that correspond to this polygon
+
+    my.sub.regions <- which(my.sf.split$region == my.region)
+    ## find the tiles that contains at least one element of my.sub.region
+    the.tiles <- names(na.omit(sapply(tile_to_poly, function(x) { match(my.sub.regions, x) })))
+    ## TODO make this works for multiple tiles.
+    the.tile <- the.tiles[1]
+    ## For now, just pick the first tile
+    my.polygon <- my.sf[which(my.sf$region == my.region), ]
+    my.rasters <- sapply(c(2000, 2020), function(year) {
+        tile <- file.path(deforestation.path, year, the.tile)
+        r <- terra::rast(tile, win = ext(vect(my.polygon)))
+        return(r)
+    })
+
+    ## Set values outside the polyg to 255 which is not defined
+    r1 <- mask(my.rasters[[1]], my.polygon, inverse = FALSE, NA)
+    r2 <- mask(my.rasters[[2]], my.polygon, inverse = FALSE, NA)
+
+    r4 <- r2
+
+    ## Stable
+    r4[r1 %in% forest_codes & r2 %in% forest_codes] <- 7 
+    r4[r1 %in% short_vegetation_codes & r2 %in% short_vegetation_codes]  <- 8
+    r4[r1 %in% cropland_codes & r2 %in% cropland_codes]  <- 9
+    r4[r1 %in% builtup_codes & r2 %in% builtup_codes]  <- 10
+    r4[r2 %in% water_codes] <- 11
+
+    ## Change
+    r4[r1 %in% forest_codes & r2 %in% short_vegetation_codes] <- 1 # A
+    r4[r2 %in% forest_codes & r1 %in% short_vegetation_codes] <- 2 # B
+
+    r4[r1 %in% forest_codes & r2 %in% cropland_codes] <- 3 # C
+    r4[r2 %in% forest_codes & r1 %in% cropland_codes] <- 4 # D
+
+    r4[r1 %in% forest_codes & r2 %in% builtup_codes] <- 5 # E
+    r4[r2 %in% forest_codes & r1 %in% builtup_codes] <- 6 # F
+    r4[r4 > 11] <- 12
+
+    levels(r4) <- data.frame(
+        id = 1:12,
+        class = c(
+            "forest -> short vegetation",
+            "short vegetation -> forest",
+            "forest -> cropland",
+            "cropland -> forest",
+            "forest -> built-up",
+            "built-up -> forest",
+            "stable forest",
+            "stable short vegetation",
+            "stable cropland",
+            "stable built-up",
+            "water",
+            "other"
+        )
+    )
+
+    my.tab <- table(values(r4))
+    these.rows <- na.omit(match(names(my.tab), levels(r4)[[1]]$id))
+
+    my.df <- levels(r4)[[1]][these.rows, ]
+    my.df$frequencies <- my.tab
+    my.df$id <- NULL
+    ## if "water" is observed, remove it.
+    water.is.here <- na.omit(match("water", my.df$class))
+    if(length(water.is.here) > 0){
+        my.df <- my.df[-water.is.here, ]
+    }
+    my.df$percents <- round(100 * prop.table(my.df$frequencies), 2)
+    my.df <- my.df[order(my.df$percents, decreasing = TRUE), ]
+    my.df$frequencies <- NULL
+
+    colnames(my.df) <- c("state or transition", "per cent")
+    my.df$type <- c("C", "A", "", "", "", "E", "", "", "B", "D")
+    my.df <- my.df[, c(3, 1, 2)]
+    return(my.df)
+}
+
+@ 
+
 <<example-table, results = "asis">>=
 library(xtable)
-print(xtable(my.df, caption = "Land cover change analysis for the administrative area Kampong Damrei in Chhloung in Krâchéh in Cambodia. This area had the highest level of deforestation and 77 per cent of the total area was deforestated. This table shows what happened to the area that was forest in year 2000."), include.rownames = FALSE, booktabs = TRUE)
+print(xtable(my.df, caption = "Land cover change analysis for the administrative area Kampong Damrei in Chhloung in Krâchéh in Cambodia. This area had the highest level of deforestation and 77 per cent of the total area was deforestated. This table shows what happened to the area that was forest in year 2000. Path 'C', forest to cropland dominated in this area, followed by forest to short vegetation.", label = "tab:example-table"), include.rownames = FALSE, booktabs = TRUE)
 @ 
 
 Similarly, what top level regions saw most deforestation? To get this measure, we calculate a weighted mean, where each are 
