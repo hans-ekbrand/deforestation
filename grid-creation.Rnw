@@ -1045,24 +1045,11 @@ my.log.f(paste(Sys.time(), "Borders collected"), "deforestation.log")
 @
 
 <<grid.creation>>=
-
 dhs.grid <- readRDS("dhs.grid.RDS")
 dhs.grid.sf <- st_as_sf(dhs.grid)
 dhs.grid.sf$region <- names(dhs.grid)
-full.grid.sf <- Reduce(rbind, list(dhs.grid.sf, south.america.non.dhs.sf, africa.non.dhs.sf, south.asia.non.dhs.sf))
-
-## create a SpatialPolygons object (since the existing code assumes that)
-## Surprisingly difficult to set the names() on the SP object.
-sp.grid <- SpatialPolygons(
-  as(full.grid.sf, "Spatial")@polygons,
-  proj4string = CRS(st_crs(full.grid.sf)$wkt)
-)
-library(sp)
-ids <- as.character(full.grid.sf$region)
-# set IDs on each Polygons object
-for (i in seq_along(sp.grid@polygons)) {
-  sp.grid@polygons[[i]]@ID <- ids[i]
-}
+my.sf <- Reduce(rbind, list(dhs.grid.sf, south.america.non.dhs.sf, africa.non.dhs.sf, south.asia.non.dhs.sf))
+saveRDS(my.sf, file = "my.sf.new.RDS")
 
 @
 
