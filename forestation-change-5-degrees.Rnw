@@ -1068,7 +1068,7 @@ short_vegetation_codes <- c(0:26, 100:126)
 cropland_codes <- c(244)
 builtup_codes <- 250
 
-deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University\ of\ Gothenburg/Deforestation\ and\ poverty\ -\ Forest\ coverage/5\ degrees/"
+## deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University\ of\ Gothenburg/Deforestation\ and\ poverty\ -\ Forest\ coverage/5\ degrees/"
 my.region <- these.regions[1]
 my.sub.regions <- which(my.sf.split$region == my.region)
 ## find the tiles that contains at least one element of my.sub.region
