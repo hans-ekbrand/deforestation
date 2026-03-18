@@ -1199,7 +1199,7 @@ Collecting more border data.
 
 <<non.dhs.countries>>=
 africa.non.dhs <- c("Algeria", "Tunisia", "Libya", "Congo", "Botswana", "Lesotho", "Guinea-Bissau", "Equatorial Guinea", "Western Sahara", "Sudan", "South Sudan", "Eritrea", "Djibouti", "Somalia")
-south.america.non.dhs <- c("Brazil", "Argentina", "Chile", "Uruguay", "Paraguay", "Venezuela (Bolivarian Republic of)", "Ecuador", "Panama", "Costa Rica", "Nicaragua", "Belize", "Mexico", "Cuba", "Jamaica")
+south.america.non.dhs <- c("Brazil", "Argentina", "Chile", "Uruguay", "Paraguay", "Venezuela (Bolivarian Republic of)", "Ecuador", "Panama", "Costa Rica", "Nicaragua", "Belize", "Mexico", "Cuba", "Jamaica", "Suriname", "French Guiana")
 
 south.asia.non.dhs <- c("Iran (Islamic Republic of)", "Lao People's Democratic Republic", "Viet Nam", "Thailand", "Papua New Guinea", "Sri Lanka")
 

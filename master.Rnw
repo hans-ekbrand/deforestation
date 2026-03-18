@@ -1,0 +1,52 @@
+\documentclass[10pt,english]{article}
+\usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry} % 16:9 three pages in a row
+\usepackage[english]{babel}
+\usepackage{longtable}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{varioref} %% vref
+\usepackage{paralist} %% compactenum
+\usepackage{siunitx} %% \num
+\usepackage{IEEEtrantools} % proper indentation for multi-line equations
+\usepackage{amsmath} %% \pmatrix
+\usepackage{subfig}
+
+\usepackage[round-mode=places, round-pad=false, round-precision=2, group-separator={,}, output-decimal-marker={.}]{siunitx}
+\sisetup{detect-all} %% use main font for numbers
+
+\usepackage{natbib} %% Author year citations
+\bibliographystyle{apalike}   % or alpha, apalike, unsrt, etc.
+
+% Caption styling - reduced spacing
+\usepackage{caption}
+\captionsetup{
+  skip=12pt
+}
+
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+
+\usepackage{xcolor}
+
+\definecolor{transA}{RGB}{46,168,153}   % teal
+\definecolor{transB}{RGB}{52,122,183}   % blue
+\definecolor{transC}{RGB}{230,126,34}   % orange
+\definecolor{transD}{RGB}{120,110,100}  % muted brown-gray
+\definecolor{transE}{RGB}{155,89,182}   % purple
+\definecolor{transF}{RGB}{120,140,60}   % olive
+
+%% make a single « start and end a chunk of \texttt{}, and two «« to represent the literal «.
+\catcode`«=\active
+\def«#1«{\texttt{#1}}
+
+\begin{document}
+
+<<grid-creation>>=
+## Running it this way will not pollute the main R session
+local({
+  knitr::knit_child("grid-creation.Rnw")
+})
+@ 
+
+\end{document}

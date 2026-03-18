@@ -874,11 +874,13 @@ With the data set in place, we can now ask questions about forestation change in
 <<forestation-change-lowest-level-example-table, results = "asis">>=
 library(sf); library(terra); library(data.table); library(xtable)
 these.regions <- head(my.dt[order(forestation.change.2020), region, ], n = 10)
-foo <- my.dt[region %in% these.regions, list(region, f.2000 = round(forestation.2000, 1), fc.2020 = round(forestation.change.2020,1), size.km2), ]
+foo <- my.dt[region %in% these.regions, list(region, f.2000 = round(forestation.2000, 1), fc.2020 = round(forestation.change.2020,1), "Area (\\si{\\kilo\\metre\\squared})" = size.km2), ]
 foo <- foo[order(fc.2020), ]
-print(xtable(foo, digits = c(0, 0, 1, 1, 0), caption = "The ten administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
+print(xtable(foo,
+             digits = c(0, 0, 1, 1, 0),
+             caption = "The ten administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
              label = "tab:highest"),
-      include.rownames = FALSE, booktabs = TRUE)
+      include.rownames = FALSE, booktabs = TRUE, sanitize.colnames.function = identity)
 
 @ 
 
@@ -887,22 +889,25 @@ Similarly, what top level regions saw most deforestation? To get this measure, w
 <<forestation-change-top-level-regions, results = "asis">>=
 library(globallivingconditions); library(xtable)
 top.level.regions <- my.dt[, list(country = unique(country), f.2000 = unique(round(weighted.mean(forestation.2000, w=size.km2, na.rm = TRUE), 1)), fc.2020 = unique(weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), size.km2 = sum(size.km2)), by = top.level.region]
-foo <- top.level.regions[head(order(fc.2020), n = 10), list(country = iso.3166$String[match(country, iso.3166$String.code)], region = top.level.region, f.2000, fc.2020, size.km2), ]
-print(xtable(foo, digits = c(0, 0, 0, 1, 1, 0), caption = "The ten administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
+foo <- top.level.regions[head(order(fc.2020), n = 10), list(country = iso.3166$String[match(country, iso.3166$String.code)], region = top.level.region, f.2000, fc.2020, "Area (\\si{\\kilo\\metre\\squared})" = size.km2), ]
+print(xtable(foo, digits = c(0, 0, 0, 1, 1, 0),
+             caption = "The ten administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
              label = "tab:highest-top-region"),
-      include.rownames = FALSE, booktabs = TRUE)
+      include.rownames = FALSE, booktabs = TRUE, sanitize.colnames.function = identity)
 @
 
 <<forestation-change-countries, results = "asis">>=
 countries <- top.level.regions[, list(f.2000 = weighted.mean(f.2000, w=size.km2, na.rm = TRUE),
                                       fc.2020 = weighted.mean(fc.2020, w=size.km2, na.rm = TRUE),
-                                      size = sum(size.km2)/1e3
+                                      "Area ($10^3\\,\\si{\\kilo\\metre\\squared}$)" = sum(size.km2)/1e3
                                       ), by = country]
 foo <- countries[head(order(fc.2020), n = 15), ]
 foo[, country := iso.3166$String[match(country, iso.3166$String.code)], ]
-print(xtable(foo, digits = c(0, 0, 1, 1, 0), caption = "The 15 administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'; 'size' is expressed in million square meters or thousand square kilometers.",
+print(xtable(foo,
+             digits = c(0, 0, 1, 1, 0),
+             caption = "The 15 countries with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
              label = "tab:highest-country"),
-      include.rownames = FALSE, booktabs = TRUE)
+      include.rownames = FALSE, booktabs = TRUE, sanitize.colnames.function = identity)
 @
 
 \clearpage
