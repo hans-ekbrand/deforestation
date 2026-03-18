@@ -42,7 +42,16 @@
 
 \begin{document}
 
-<<grid-creation>>=
+<<opts.chunk.parent, echo = FALSE>>=
+opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE,
+fig.width=4, fig.height=4, fig.pos = 'htb', tidy.opts=list(blank=FALSE,
+width.cutoff=50), background='white', tidy=TRUE, error=TRUE, message=FALSE,
+dev="png", dpi = 200, autodep = TRUE)
+opts_knit$set(root.dir = ".")
+options(scipen=999) ## Avoid scientific formating of large numbers.
+@ 
+
+<<grid-creation, results = "hide">>=
 ## Running it this way will not pollute the main R session
 local({
   knitr::knit_child("grid-creation.Rnw")
