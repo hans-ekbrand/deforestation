@@ -29,12 +29,11 @@
 
 \usepackage{xcolor}
 
-\definecolor{transA}{RGB}{52,122,183}   % blue
-\definecolor{transB}{RGB}{46,168,153}   % teal
+\definecolor{transA}{RGB}{46,168,153}   % teal
+\definecolor{transB}{RGB}{52,122,183}   % blue
 \definecolor{transC}{RGB}{230,126,34}   % orange
-\definecolor{transD}{RGB}{155,89,182}   % purple
-
-\definecolor{transE}{RGB}{120,110,100}  % muted brown-gray
+\definecolor{transD}{RGB}{120,110,100}  % muted brown-gray
+\definecolor{transE}{RGB}{155,89,182}   % purple
 \definecolor{transF}{RGB}{120,140,60}   % olive
 
 %% make a single « start and end a chunk of \texttt{}, and two «« to represent the literal «.
@@ -764,7 +763,7 @@ The data set contains, for \num{32324} administrative areas, their size in squar
       Variable name & Description \\
       \midrule
       region & A unique string identifier build by concatenating 3 or 4 parts, separated by a dot:
-               (1) A country code according to ISO 3166 (numeric for the countries with DHS coverage, letters otherwise); (2) The top level region name; (3, optional) The second level region name, only included if all the country provides a hierarchy of more than two levels; (last) the name of the administrative area(s) If the area is a result of mergers all area names are included, separated by a ``+'', e.g. ``116.Kâmpôt.Kampot.Koun Satv + Trapeang sangkae`` for a row representing Cambodia (numeric code 116), top level region ``Kâmpôt'' and resulting from merging the two areas ``Koun Satv'' and ``Trapeang sangkae''\\
+               (1) A country code according to ISO 3166 (numeric for the countries with DHS coverage, letters otherwise); (2) The top level region name; (3, optional) The second level region name, only included if the country provides a hierarchy of more than two levels; (last) the name of the administrative area(s) If the area is a result of mergers all area names are included, separated by a ``+'', e.g. ``116.Kâmpôt.Kampot.Koun Satv + Trapeang sangkae`` for a row representing Cambodia (numeric code 116), top level region ``Kâmpôt'' and resulting from merging the two areas ``Koun Satv'' and ``Trapeang sangkae''\\
       forestation.2000 & the proportion of the area covered by forest in year 2000 (range:0-1) \\
       forestation.2005 & the percentage units change in forestation between year 2000 and year 2005 (theoretical range: -100 - 100)\\
       forestation.2010 & the percentage units change in forestation between year 2000 and year 2010 \\
@@ -780,61 +779,7 @@ The data set contains, for \num{32324} administrative areas, their size in squar
 \section{Results}
 \label{sec:results}
 
-We will visualise the reference level, that is the forestation state in year 2000, and the net change, for \num{34324} administrative areas. While the full potential of use cases involves linking the data set to external data sets, we can identify areas with the most deforestation, aggregate the forestation change statistic to top level regions in countries, and identify top level regions of interest. Once a interesting area, or top level region, is found, we can also provide more detailed information about the changes in forest states in this area, in particular we can quantify the six different transition to and from the state ``forest'' given in figure \vref{fig:transitions}.
-
-\tikzset{
-  trA/.style={draw=transA, very thick},
-  trB/.style={draw=transB, very thick},
-  trC/.style={draw=transC, very thick},
-  trD/.style={draw=transD, very thick},
-  trE/.style={draw=transE, very thick},
-  trF/.style={draw=transF, very thick}
-}
-
-\begin{figure}
-  \centering
-
-\begin{tikzpicture}[
-  node distance=10mm and 35mm,
-  state/.style={
-    draw,
-    rounded corners,
-    minimum width=3.2cm,
-    minimum height=8mm,
-    align=center
-  },
-  lab/.style={
-    font=\small,
-    fill=white,
-    inner sep=1pt
-  },
-  >={Latex}
-]
-
-% nodes
-\node[state] (f1) {forest};
-\node[state, right=of f1] (b) {short vegetation cover};
-
-\node[state, below=of f1] (f2) {forest};
-\node[state, right=of f2] (c) {cropland};
-
-\node[state, below=of f2] (f3) {forest};
-\node[state, right=of f3] (s) {built-up};
-
-% arrows with inside labels
-\draw[->, bend left=15, trA] (f1) to node[below, sloped, text=transA] {A} (b);
-\draw[->, bend left=15, trB] (b) to node[above, sloped, text=transB] {B} (f1);
-
-\draw[->, bend left=15, trC] (f2) to node[below, sloped, text=transC] {C} (c);
-\draw[->, bend left=15, trD] (c) to node[above, sloped, text=transD] {D} (f2);
-
-\draw[->, bend left=15, trE] (f3) to node[below, sloped, text=transE] {E} (s);
-\draw[->, bend left=15, trF] (s) to node[above, sloped, text=transF] {F} (f3);
-
-\end{tikzpicture}
-\caption{Six transitions to and from the state ``forest''. ``A'' represents deforestation, forest to short vegetation cover, while ``B'' is the inverse: transition from short vegetation cover to forest, ie. forestation. B, D and F represents way that forestation can \emph{increase}, while A, C and E are variants of \emph{deforestation}.}
-\label{fig:transitions}
-\end{figure}
+We will visualise the reference level, that is the forestation state in year 2000, and the net change, for \num{34324} administrative areas. While the full potential of use cases involves linking the data set to external data sets, we can identify areas with the most deforestation, aggregate the forestation change statistic to top level regions in countries, and identify top level regions of interest. But we should also point out that, having a set of areas where deforestation took place also opens for more detailed analyses of the consequences of deforestation, see section \ref{lab:consequences}.
 
 \subsection{Forest coverage year 2000}
 Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in year 2000. The main points of including it is show that (a) even if only the averages are used for each area, the areas are so small that the figure show quite a lot of detail and (b) to provide a way to visually confirm that the aggregation algorithm appears to be correct.
@@ -923,251 +868,102 @@ ggplot() +
 
 @
 
-<<forest-change-south-america, fig.width = 7.5, fig.height = 9, fig.cap = paste0("Change in average forest coverage in South America ", year0, "-", year1, " per administrative area. Country borders added."), eval = FALSE>>=
-borders_crop <- my.crop.f(-90, -45, -34, 15, all.borders)
-local.grat <- my.crop.f(-90, -45, -34, 15, grat)
-label_points <- sf::st_point_on_surface(borders_crop)
-my.object <- my.crop.f(-90, -45, -34, 15, my.sf)
+With the data set in place, we can now ask questions about forestation change in administrative areas, e.g. which administrative areas saw most deforestation and what distribution over the three types of deforestation occured there? %% Figure \ref{fig:forestation-change-lowest-level-example} illustrates transitions defined in figure \ref{fig:transitions} on the administrative area which saw the highest level of deforestation, a small area in Cambodia.
 
-## local bb
-bb <- st_bbox(my.object)
-    
-ggplot() +
-
-    ## graticule behind polygons
-    geom_sf(data = local.grat, linewidth = 0.10) +
-
-    ## The actual data
-    geom_sf(data = my.object, aes(fill = forestation.change.2020), color = NA) +
-
-    ## lock extent to the bbox
-    coord_sf(
-        xlim = c(bb["xmin"], bb["xmax"]),
-        ylim = c(bb["ymin"], bb["ymax"]),
-        expand = FALSE
-    ) +
-
-    ## Country borders
-    geom_sf(data = borders_crop,
-          fill = NA,
-          color = "black",
-          linewidth = 0.3) +
-    
-    scale_fill_gradient2(
-        low = "red",
-        mid = "white",
-        high = "blue",
-        midpoint = 0,
-        name = "Forest cover change (%)  "
-    ) +
-
-    geom_sf_text(
-        data = label_points,
-        aes(label = COUNTRY),
-        color = "black",
-        size = 3
-    ) +
-
-    theme_minimal() +
-    theme(legend.position = "top",
-          legend.direction = "horizontal",
-          legend.key.width = unit(1, "cm"),
-          legend.key.height = unit(0.07, "cm"),          
-          legend.title = element_text(size = 13),
-          legend.text = element_text(size = 9)) +
-    labs(title = NULL,
-         x = NULL, y = NULL)
-
-@ 
-
-With the data set in place, we can now ask questions about forestation change in administrative areas, e.g. which administrative areas saw most deforestation and what distribution over the three types of deforestation occured there? Figure \vref{fig:forestation-change-lowest-level-example} illustrates transitions defined in \vref{fig:transitions} on the administrative area which saw the highest level of deforestation, a small area in Cambodia.
 
 <<forestation-change-lowest-level-example-table, results = "asis">>=
 library(sf); library(terra); library(data.table); library(xtable)
-these.regions <- head(my.dt[order(forestation.change.2020), region, ], n = 3)
+these.regions <- head(my.dt[order(forestation.change.2020), region, ], n = 10)
 foo <- my.dt[region %in% these.regions, list(region, f.2000 = round(forestation.2000, 1), fc.2020 = round(forestation.change.2020,1), size.km2), ]
 foo <- foo[order(fc.2020), ]
-print(xtable(foo, digits = c(0, 0, 1, 1, 0), caption = "The three administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
+print(xtable(foo, digits = c(0, 0, 1, 1, 0), caption = "The ten administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
              label = "tab:highest"),
       include.rownames = FALSE, booktabs = TRUE)
 
 @ 
 
-<<forestation-change-lowest-level-example, fig.cap = "An example of a more detailed breakdown of land cover change based on the area in the top row in table \\ref{tab:highest}. The upper graph shows only the extent of deforestation (which is this case is about 77 percentage points). The bottom graph shows, amongst other things, the type of land use that replaced the forest: mostly cropland but also short vegetation, for exact numbers, see table \\vref{tab:example-table}.", fig.width = 6, fig.height = 6>>=
-library(sf); library(terra); library(data.table)
+Similarly, what top level regions saw most deforestation? To get this measure, we calculate a weighted mean, where each are 
 
-## For a given region id, get the full state for year 2000 and the full state for year 2020.
-## find the cells that are instances of any of the six forest transitions
-## for the other cells, use a simplified ledgend:
-
-## stable forest green
-## stable cropland yellow
-## stable builtup grey
-## open surface water (probably stable)
-
-forest_codes <- c(27:48, 127:148)   # >= 5m trees on terra firma + wetlands
-short_vegetation_codes <- c(0:26, 100:126)
-cropland_codes <- c(244)
-water_codes  <- c(200:207, 254)     # open surface water + ocean
-
-## use transparent colors for these three
-
-## find the relevant tiles
-## find the sub polygons in my.sf.split that correspond to this polygon
-
-my.region <- these.regions[1]
-my.sub.regions <- which(my.sf.split$region == my.region)
-## find the tiles that contains at least one element of my.sub.region
-the.tiles <- names(na.omit(sapply(tile_to_poly, function(x) { match(my.sub.regions, x) })))
-## TODO make this works for multiple tiles.
-the.tile <- the.tiles[1]
-## For now, just pick the first tile
-my.polygon <- my.sf[which(my.sf$region == my.region), ]
-my.rasters <- sapply(c(2000, 2020), function(year) {
-    tile <- file.path(deforestation.path, year, the.tile)
-    r <- terra::rast(tile, win = ext(vect(my.polygon)))
-    return(r)
-})
-
-## Set values outside the polyg to 255 which is not defined
-r1 <- mask(my.rasters[[1]], my.polygon, inverse = FALSE, NA)
-r2 <- mask(my.rasters[[2]], my.polygon, inverse = FALSE, NA)
-
-forest_codes <- c(27:48, 127:148)
-short_vegetation_codes <- c(0:26, 100:126)
-cropland_codes <- 244
-builtup_codes <- 250
-water_codes <- c(200:207, 254)
-
-## Let's start easy: same color scheme as used in Hansen 2013
-
-## 1. stable non-forest: black
-## 2. stable forest: green
-## 3. forestation: blue
-## 4  deforestation: red:
-
-forest_codes <- c(27:48, 127:148)
-all_values <- 0:255
-non_forest_codes <- all_values[-match(forest_codes, all_values)]
-
-r3 <- r2
-r3[r1 %in% non_forest_codes & r2 %in% non_forest_codes] <- 1
-r3[r1 %in% forest_codes & r2 %in% forest_codes] <- 2
-r3[r1 %in% non_forest_codes & r2 %in% forest_codes] <- 3
-r3[r1 %in% forest_codes & r2 %in% non_forest_codes] <- 4
-
-levels(r3) <- data.frame(
-  id = 1:4,
-  class = c(
-    "stable non-forest",
-    "stable forest",
-    "non-forest -> forest",
-    "forest -> non-forest"
-  )
-)
-
-coltab(r3) <- data.frame(
-  value = 1:4,
-  col = c("black", "green", "blue", "red")
-)
-
-## plot(mask(r3, my.polygon))
-
-## Try again, with more categories this time
-r4 <- r2
-
-# Stable
-r4[r1 %in% forest_codes & r2 %in% forest_codes] <- 7 
-r4[r1 %in% short_vegetation_codes & r2 %in% short_vegetation_codes]  <- 8
-r4[r1 %in% cropland_codes & r2 %in% cropland_codes]  <- 9
-r4[r1 %in% builtup_codes & r2 %in% builtup_codes]  <- 10
-r4[r2 %in% water_codes] <- 11
-
-# Change
-r4[r1 %in% forest_codes & r2 %in% short_vegetation_codes] <- 1 # A
-r4[r2 %in% forest_codes & r1 %in% short_vegetation_codes] <- 2 # B
-
-r4[r1 %in% forest_codes & r2 %in% cropland_codes] <- 3 # C
-r4[r2 %in% forest_codes & r1 %in% cropland_codes] <- 4 # D
-
-r4[r1 %in% forest_codes & r2 %in% builtup_codes] <- 5 # E
-r4[r2 %in% forest_codes & r1 %in% builtup_codes] <- 6 # F
-r4[r4 > 11] <- 12
-
-levels(r4) <- data.frame(
-  id = 1:12,
-  class = c(
-      "forest -> short vegetation",
-      "short vegetation -> forest",
-      "forest -> cropland",
-      "cropland -> forest",
-      "forest -> built-up",
-      "built-up -> forest",
-      "stable forest",
-      "stable short vegetation",
-      "stable cropland",
-      "stable built-up",
-      "water",
-      "other"
-  )
-)
-
-## \definecolor{transA}{RGB}{52,122,183}   % blue
-## \definecolor{transB}{RGB}{46,168,153}   % teal
-## \definecolor{transC}{RGB}{230,126,34}   % orange
-## \definecolor{transD}{RGB}{155,89,182}   % purple
-
-## \definecolor{transE}{RGB}{120,110,100}  % muted brown-gray
-## \definecolor{transF}{RGB}{120,140,60}   % olive
-
-coltab(r4) <- data.frame(
-  value = 1:12,
-  col = c(
-    "#F4A261",  # 1 forest -> short vegetation  (deforestation, noticeable orange)
-    "#2A9D8F",  # 2 short vegetation -> forest  (recovery, teal)
-    "#7B2CBF",   # 3 forest -> cropland          (deforestation, purple)
-    "black",     # 4 cropland -> forest          (gain to forest, medium blue)
-    "#D62828",  # 5 forest -> built-up          (most severe deforestation, strong red)
-    "#6C757D",  # 6 built-up -> forest          (rare/interesting reverse, muted grey-blue)
-    "#D9F0D3",  # 7 stable forest               (very light green)
-    "#E6F5F9",  # 8 stable short vegetation     (very light cyan)
-    "#FFF7BC",  # 9 stable cropland             (very light yellow)
-    "#FDE0DD",  # 10 stable built-up            (very light pink)
-    "#4A90E2",  # 11 water                      (clear blue, but not too dark)
-    "#F2F2F2"   # 12 other                      (very light grey)
-  )
-)
-
-## plot(mask(r4, my.polygon))
-
-my.tab <- table(values(r4))
-these.rows <- na.omit(match(names(my.tab), levels(r4)[[1]]$id))
-
-my.df <- levels(r4)[[1]][these.rows, ]
-my.df$frequencies <- my.tab
-my.df$id <- NULL
-## if "water" is observed, remove it.
-water.is.here <- na.omit(match("water", my.df$class))
-if(length(water.is.here) > 0){
-    my.df <- my.df[-water.is.here, ]
-}
-my.df$percents <- round(100 * prop.table(my.df$frequencies), 2)
-my.df <- my.df[order(my.df$percents, decreasing = TRUE), ]
-my.df$frequencies <- NULL
-
-## sum(my.df$percents[my.df$class %in% c("forest -> cropland", "forest -> short vegetation", "forest -> built-up")]) - sum(my.df$percents[my.df$class %in% c("cropland -> forest", "short vegetation -> forest", "built-up -> forest")])
-colnames(my.df) <- c("state or transition", "per cent")
-my.df$type <- c("C", "A", "", "", "", "E", "", "", "B", "D")
-my.df <- my.df[, c(3, 1, 2)]
-
-op <- par(mfrow = c(2, 1), mar = c(3, 3, 2, 5))  # 2 rows, 2 cols
-## plot(mask(r1, my.polygon), main = "Land cover 2000")
-## plot(mask(r2, my.polygon), main = "Land cover 2020")
-plot(mask(r3, my.polygon), main = "Simple Forestation change")
-plot(mask(r4, my.polygon), main = "Detailed Forestation change")
-par(op)
-
+<<forestation-change-top-level-regions, results = "asis">>=
+library(globallivingconditions); library(xtable)
+top.level.regions <- my.dt[, list(country = unique(country), f.2000 = unique(round(weighted.mean(forestation.2000, w=size.km2, na.rm = TRUE), 1)), fc.2020 = unique(weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), size.km2 = sum(size.km2)), by = top.level.region]
+foo <- top.level.regions[head(order(fc.2020), n = 10), list(country = iso.3166$String[match(country, iso.3166$String.code)], region = top.level.region, f.2000, fc.2020, size.km2), ]
+print(xtable(foo, digits = c(0, 0, 0, 1, 1, 0), caption = "The ten administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
+             label = "tab:highest-top-region"),
+      include.rownames = FALSE, booktabs = TRUE)
 @
+
+<<forestation-change-countries, results = "asis">>=
+countries <- top.level.regions[, list(f.2000 = weighted.mean(f.2000, w=size.km2, na.rm = TRUE),
+                                      fc.2020 = weighted.mean(fc.2020, w=size.km2, na.rm = TRUE),
+                                      size = sum(size.km2)/1e3
+                                      ), by = country]
+foo <- countries[head(order(fc.2020), n = 15), ]
+foo[, country := iso.3166$String[match(country, iso.3166$String.code)], ]
+print(xtable(foo, digits = c(0, 0, 1, 1, 0), caption = "The 15 administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'; 'size' is expressed in million square meters or thousand square kilometers.",
+             label = "tab:highest-country"),
+      include.rownames = FALSE, booktabs = TRUE)
+@
+
+\clearpage
+
+\subsection{Consequences of Deforestation}
+\label{lab:consequences}
+The most basic aspect of the consequences of deforestation is given by the simple question: what replaced the forest? Once a interesting area, or top level region, is found, we can also provide more detailed information about the changes in forest states in this area, in particular we can quantify the six different transition to and from the state ``forest'' given in figure \ref{fig:transitions}. 
+
+\tikzset{
+  trA/.style={draw=transA, very thick},
+  trB/.style={draw=transB, very thick},
+  trC/.style={draw=transC, very thick},
+  trD/.style={draw=transD, very thick},
+  trE/.style={draw=transE, very thick},
+  trF/.style={draw=transF, very thick}
+}
+
+\begin{figure}
+  \centering
+
+\begin{tikzpicture}[
+  node distance=10mm and 35mm,
+  state/.style={
+    draw,
+    rounded corners,
+    minimum width=3.2cm,
+    minimum height=8mm,
+    align=center
+  },
+  lab/.style={
+    font=\small,
+    fill=white,
+    inner sep=1pt
+  },
+  >={Latex}
+]
+
+% nodes
+\node[state] (f1) {forest};
+\node[state, right=of f1] (b) {short vegetation cover};
+
+\node[state, below=of f1] (f2) {forest};
+\node[state, right=of f2] (c) {cropland};
+
+\node[state, below=of f2] (f3) {forest};
+\node[state, right=of f3] (s) {built-up};
+
+% arrows with inside labels
+\draw[->, bend left=15, trA] (f1) to node[below, sloped, text=transA] {A} (b);
+\draw[->, bend left=15, trB] (b) to node[above, sloped, text=transB] {B} (f1);
+
+\draw[->, bend left=15, trC] (f2) to node[below, sloped, text=transC] {C} (c);
+\draw[->, bend left=15, trD] (c) to node[above, sloped, text=transD] {D} (f2);
+
+\draw[->, bend left=15, trE] (f3) to node[below, sloped, text=transE] {E} (s);
+\draw[->, bend left=15, trF] (s) to node[above, sloped, text=transF] {F} (f3);
+
+\end{tikzpicture}
+\caption{Six transitions to and from the state ``forest''. ``A'' represents deforestation, forest to short vegetation cover, while ``B'' is the inverse: transition from short vegetation cover to forest, ie. forestation. B, D and F represents way that forestation can \emph{increase}, while A, C and E are variants of \emph{deforestation}.}
+\label{fig:transitions}
+\end{figure}
 
 <<stats.from.polygon>>=
 stats.from.polygon <- function(my.region){
@@ -1264,23 +1060,76 @@ stats.from.polygon <- function(my.region){
     return(my.df)
 }
 
+@
+
+<<focus-deforestation, fig.cap = "Visualisation of the happened to the deforestated land in the administrative area with the highest level of deforestation.", fig.width = 6, fig.height = 3>>=
+forest_codes <- c(27:48, 127:148)   # >= 5m trees on terra firma + wetlands
+short_vegetation_codes <- c(0:26, 100:126)
+cropland_codes <- c(244)
+builtup_codes <- 250
+
+deforestation.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University\ of\ Gothenburg/Deforestation\ and\ poverty\ -\ Forest\ coverage/5\ degrees/"
+my.region <- these.regions[1]
+my.sub.regions <- which(my.sf.split$region == my.region)
+## find the tiles that contains at least one element of my.sub.region
+the.tiles <- names(na.omit(sapply(tile_to_poly, function(x) { match(my.sub.regions, x) })))
+## TODO make this works for multiple tiles.
+## For now, just pick the first tile
+the.tile <- the.tiles[1]
+my.polygon <- my.sf[which(my.sf$region == my.region), ]
+my.rasters <- sapply(c(2000, 2020), function(year) {
+    tile <- file.path(deforestation.path, year, the.tile)
+    r <- terra::rast(tile, win = ext(vect(my.polygon)))
+    return(r)
+})
+r1 <- mask(my.rasters[[1]], my.polygon, inverse = FALSE, NA)
+r2 <- mask(my.rasters[[2]], my.polygon, inverse = FALSE, NA)
+
+r <- r2
+
+## Order by way of desired apperence in the legend
+r[r1 %in% forest_codes & r2 %in% short_vegetation_codes] <- 1 # A
+r[r1 %in% forest_codes & r2 %in% cropland_codes] <- 2 # C
+r[r1 %in% forest_codes & r2 %in% builtup_codes] <- 3 # E
+r[r2 %in% forest_codes & r1 %in% short_vegetation_codes] <- 4 # B
+r[r2 %in% forest_codes & r1 %in% cropland_codes] <- 5 # D
+r[r2 %in% forest_codes & r1 %in% builtup_codes] <- 6 # F
+r[r > 3] <- 7
+
+levels(r) <- data.frame(
+  id = 1:7,
+  class = c(
+      "A forest \u2192 short vegetation",
+      "C forest \u2192 cropland",
+      "E forest  \u2192 builtup",
+      "B",
+      "D",
+      "F",
+      "non-deforestation"
+  )
+)
+
+coltab(r) <- data.frame(
+  value = 1:7,
+  col = c(
+      rgb(46,168,153, maxColorValue=255),  # A
+      rgb(230,126,34, maxColorValue=255),  # B
+      rgb(155,89,182, maxColorValue=255),  # C
+      rgb(52,122,183, maxColorValue=255),  # D
+      rgb(120,110,100, maxColorValue=255), # E
+      rgb(120,140,60, maxColorValue=255),  # F      
+      "#F2F2F2"   # 7 other                      (very light grey)
+  )
+)
+
+plot(r)
+plot(my.polygon, add = TRUE, col = NA)
+
 @ 
 
 <<example-table, results = "asis">>=
 library(xtable)
 print(xtable(my.df, caption = "Land cover change analysis for the administrative area Kampong Damrei in Chhloung in Krâchéh in Cambodia. This area had the highest level of deforestation and 77 per cent of the total area was deforestated. This table shows what happened to the area that was forest in year 2000. Path 'C', forest to cropland dominated in this area, followed by forest to short vegetation.", label = "tab:example-table"), include.rownames = FALSE, booktabs = TRUE)
-@ 
-
-Similarly, what top level regions saw most deforestation? To get this measure, we calculate a weighted mean, where each are 
-
-<<forestation-change-top-level-regions, results = "markup", eval = FALSE>>=
-top.level.regions <- my.dt[, list(country = unique(country), size.km2 = sum(size.km2), forestation.change.2020 = weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), by = top.level.region]
-top.level.regions[order(forestation.change.2020), ]
-@
-
-<<forestation-change-countries, results = "markup", eval = FALSE>>=
-countries <- top.level.regions[, list(forestation.change.2020 = weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), by = country]
-countries[order(forestation.change.2020), ]
 @ 
 
 \clearpage

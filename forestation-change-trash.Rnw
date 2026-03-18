@@ -37,3 +37,240 @@ ggplot(my.sf) +
             linewidth = 0.3)
 
 @ 
+
+
+
+<<forest-change-south-america, fig.width = 7.5, fig.height = 9, fig.cap = paste0("Change in average forest coverage in South America ", year0, "-", year1, " per administrative area. Country borders added."), eval = FALSE>>=
+borders_crop <- my.crop.f(-90, -45, -34, 15, all.borders)
+local.grat <- my.crop.f(-90, -45, -34, 15, grat)
+label_points <- sf::st_point_on_surface(borders_crop)
+my.object <- my.crop.f(-90, -45, -34, 15, my.sf)
+
+## local bb
+bb <- st_bbox(my.object)
+    
+ggplot() +
+
+    ## graticule behind polygons
+    geom_sf(data = local.grat, linewidth = 0.10) +
+
+    ## The actual data
+    geom_sf(data = my.object, aes(fill = forestation.change.2020), color = NA) +
+
+    ## lock extent to the bbox
+    coord_sf(
+        xlim = c(bb["xmin"], bb["xmax"]),
+        ylim = c(bb["ymin"], bb["ymax"]),
+        expand = FALSE
+    ) +
+
+    ## Country borders
+    geom_sf(data = borders_crop,
+          fill = NA,
+          color = "black",
+          linewidth = 0.3) +
+    
+    scale_fill_gradient2(
+        low = "red",
+        mid = "white",
+        high = "blue",
+        midpoint = 0,
+        name = "Forest cover change (%)  "
+    ) +
+
+    geom_sf_text(
+        data = label_points,
+        aes(label = COUNTRY),
+        color = "black",
+        size = 3
+    ) +
+
+    theme_minimal() +
+    theme(legend.position = "top",
+          legend.direction = "horizontal",
+          legend.key.width = unit(1, "cm"),
+          legend.key.height = unit(0.07, "cm"),          
+          legend.title = element_text(size = 13),
+          legend.text = element_text(size = 9)) +
+    labs(title = NULL,
+         x = NULL, y = NULL)
+
+@
+
+
+<<forestation-change-lowest-level-example, fig.cap = "An example of a more detailed breakdown of land cover change based on the area in the top row in table \\ref{tab:highest}. The upper graph shows only the extent of deforestation (which is this case is about 77 percentage points). The bottom graph shows, amongst other things, the type of land use that replaced the forest: mostly cropland but also short vegetation, for exact numbers, see table \\vref{tab:example-table}.", fig.width = 6, fig.height = 6>>=
+library(sf); library(terra); library(data.table)
+
+## For a given region id, get the full state for year 2000 and the full state for year 2020.
+## find the cells that are instances of any of the six forest transitions
+## for the other cells, use a simplified ledgend:
+
+## stable forest green
+## stable cropland yellow
+## stable builtup grey
+## open surface water (probably stable)
+
+forest_codes <- c(27:48, 127:148)   # >= 5m trees on terra firma + wetlands
+short_vegetation_codes <- c(0:26, 100:126)
+cropland_codes <- c(244)
+water_codes  <- c(200:207, 254)     # open surface water + ocean
+
+## use transparent colors for these three
+
+## find the relevant tiles
+## find the sub polygons in my.sf.split that correspond to this polygon
+
+my.region <- these.regions[1]
+my.sub.regions <- which(my.sf.split$region == my.region)
+## find the tiles that contains at least one element of my.sub.region
+the.tiles <- names(na.omit(sapply(tile_to_poly, function(x) { match(my.sub.regions, x) })))
+## TODO make this works for multiple tiles.
+the.tile <- the.tiles[1]
+## For now, just pick the first tile
+my.polygon <- my.sf[which(my.sf$region == my.region), ]
+my.rasters <- sapply(c(2000, 2020), function(year) {
+    tile <- file.path(deforestation.path, year, the.tile)
+    r <- terra::rast(tile, win = ext(vect(my.polygon)))
+    return(r)
+})
+
+## Set values outside the polyg to 255 which is not defined
+r1 <- mask(my.rasters[[1]], my.polygon, inverse = FALSE, NA)
+r2 <- mask(my.rasters[[2]], my.polygon, inverse = FALSE, NA)
+
+forest_codes <- c(27:48, 127:148)
+short_vegetation_codes <- c(0:26, 100:126)
+cropland_codes <- 244
+builtup_codes <- 250
+water_codes <- c(200:207, 254)
+
+## Let's start easy: same color scheme as used in Hansen 2013
+
+## 1. stable non-forest: black
+## 2. stable forest: green
+## 3. forestation: blue
+## 4  deforestation: red:
+
+forest_codes <- c(27:48, 127:148)
+all_values <- 0:255
+non_forest_codes <- all_values[-match(forest_codes, all_values)]
+
+r3 <- r2
+r3[r1 %in% non_forest_codes & r2 %in% non_forest_codes] <- 1
+r3[r1 %in% forest_codes & r2 %in% forest_codes] <- 2
+r3[r1 %in% non_forest_codes & r2 %in% forest_codes] <- 3
+r3[r1 %in% forest_codes & r2 %in% non_forest_codes] <- 4
+
+levels(r3) <- data.frame(
+  id = 1:4,
+  class = c(
+    "stable non-forest",
+    "stable forest",
+    "non-forest -> forest",
+    "forest -> non-forest"
+  )
+)
+
+coltab(r3) <- data.frame(
+  value = 1:4,
+  col = c("black", "green", "blue", "red")
+)
+
+## plot(mask(r3, my.polygon))
+
+## Try again, with more categories this time
+r4 <- r2
+
+# Stable
+r4[r1 %in% forest_codes & r2 %in% forest_codes] <- 7 
+r4[r1 %in% short_vegetation_codes & r2 %in% short_vegetation_codes]  <- 8
+r4[r1 %in% cropland_codes & r2 %in% cropland_codes]  <- 9
+r4[r1 %in% builtup_codes & r2 %in% builtup_codes]  <- 10
+r4[r2 %in% water_codes] <- 11
+
+# Change
+r4[r1 %in% forest_codes & r2 %in% short_vegetation_codes] <- 1 # A
+r4[r2 %in% forest_codes & r1 %in% short_vegetation_codes] <- 2 # B
+
+r4[r1 %in% forest_codes & r2 %in% cropland_codes] <- 3 # C
+r4[r2 %in% forest_codes & r1 %in% cropland_codes] <- 4 # D
+
+r4[r1 %in% forest_codes & r2 %in% builtup_codes] <- 5 # E
+r4[r2 %in% forest_codes & r1 %in% builtup_codes] <- 6 # F
+r4[r4 > 11] <- 12
+
+levels(r4) <- data.frame(
+  id = 1:12,
+  class = c(
+      "forest -> short vegetation",
+      "short vegetation -> forest",
+      "forest -> cropland",
+      "cropland -> forest",
+      "forest -> built-up",
+      "built-up -> forest",
+      "stable forest",
+      "stable short vegetation",
+      "stable cropland",
+      "stable built-up",
+      "water",
+      "other"
+  )
+)
+
+## \definecolor{transB}{RGB}{46,168,153}   % teal
+## \definecolor{transC}{RGB}{230,126,34}   % orange
+## \definecolor{transD}{RGB}{155,89,182}   % purple
+
+## \definecolor{transA}{RGB}{52,122,183}   % blue
+## \definecolor{transE}{RGB}{120,110,100}  % muted brown-gray
+## \definecolor{transF}{RGB}{120,140,60}   % olive
+
+coltab(r4) <- data.frame(
+  value = 1:12,
+  col = c(
+    "#F4A261",  # 1 forest -> short vegetation  (deforestation, noticeable orange)
+    "#2A9D8F",  # 2 short vegetation -> forest  (recovery, teal)
+    "#7B2CBF",   # 3 forest -> cropland          (deforestation, purple)
+    "black",     # 4 cropland -> forest          (gain to forest, medium blue)
+    "#D62828",  # 5 forest -> built-up          (most severe deforestation, strong red)
+    "#6C757D",  # 6 built-up -> forest          (rare/interesting reverse, muted grey-blue)
+    "#D9F0D3",  # 7 stable forest               (very light green)
+    "#E6F5F9",  # 8 stable short vegetation     (very light cyan)
+    "#FFF7BC",  # 9 stable cropland             (very light yellow)
+    "#FDE0DD",  # 10 stable built-up            (very light pink)
+    "#4A90E2",  # 11 water                      (clear blue, but not too dark)
+    "#F2F2F2"   # 12 other                      (very light grey)
+  )
+)
+
+
+## plot(mask(r4, my.polygon))
+
+my.tab <- table(values(r4))
+these.rows <- na.omit(match(names(my.tab), levels(r4)[[1]]$id))
+
+my.df <- levels(r4)[[1]][these.rows, ]
+my.df$frequencies <- my.tab
+my.df$id <- NULL
+## if "water" is observed, remove it.
+water.is.here <- na.omit(match("water", my.df$class))
+if(length(water.is.here) > 0){
+    my.df <- my.df[-water.is.here, ]
+}
+my.df$percents <- round(100 * prop.table(my.df$frequencies), 2)
+my.df <- my.df[order(my.df$percents, decreasing = TRUE), ]
+my.df$frequencies <- NULL
+
+## sum(my.df$percents[my.df$class %in% c("forest -> cropland", "forest -> short vegetation", "forest -> built-up")]) - sum(my.df$percents[my.df$class %in% c("cropland -> forest", "short vegetation -> forest", "built-up -> forest")])
+colnames(my.df) <- c("state or transition", "per cent")
+my.df$type <- c("C", "A", "", "", "", "E", "", "", "B", "D")
+my.df <- my.df[, c(3, 1, 2)]
+
+op <- par(mfrow = c(2, 1), mar = c(3, 3, 2, 5))  # 2 rows, 2 cols
+## plot(mask(r1, my.polygon), main = "Land cover 2000")
+## plot(mask(r2, my.polygon), main = "Land cover 2020")
+plot(mask(r3, my.polygon), main = "Simple Forestation change")
+plot(mask(r4, my.polygon), main = "Detailed Forestation change")
+par(op)
+
+@
