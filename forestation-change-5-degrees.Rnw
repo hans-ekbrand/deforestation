@@ -794,8 +794,6 @@ forest.area.2020 <- forestation.2020 / 100 * size.km2
 
 Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in year 2000. The main points of including it is show that (a) even if only the averages are used for each area, the areas are so small that the figure show quite a lot of detail and (b) an informal visual confirmation that the aggregation algorithm appears to be correct.
 
-In year 2000, \num{\Sexpr{round(forestation.2000, 2)}}\% of the total area included in the dataset was covered by forest, in year 2020 that number was down \num{\Sexpr{round(deforestation.2020, 2)}} percentages to \num{\Sexpr{round(forestation.2020, 2)}}\%.
-
 <<forestation, fig.cap = "Average forest coverage in the administrative areas in year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
 library(sf); library(ggplot2)
 
@@ -833,9 +831,7 @@ ggplot() +
 
 @
 
-% \subsection{Forestation change 2000-2020}
-
-Figure \vref{fig:forestation-change-temporary-5-degrees} shows the change in average forest coverage for all administrative areas.
+In year 2000, \num{\Sexpr{round(forestation.2000, 2)}}\% of the total area included in the dataset was covered by forest, in year 2020 that number was down \num{\Sexpr{round(deforestation.2020, 2)}} percentages to \num{\Sexpr{round(forestation.2020, 2)}}\%. The main result is visualised in figure \vref{fig:forestation-change-temporary-5-degrees} which shows the change in average forest coverage for all administrative areas. This zoomed out perspective immediately gives some hints as to were deforestation was most intense, eastern Amazon, Cambodia stand out, but also Nicaragua, Uganda, Tanzania and Mozambique have large administrative area with high levels of deforestation.
 
 <<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage 2000-2020 per administrative area. Country borders added."), fig.width=6, fig.height = 3, dpi = 400>>=
 library(ggplot2)
@@ -880,8 +876,7 @@ ggplot() +
 
 @
 
-With the data set in place, we can now ask questions about forestation change in administrative areas, e.g. which administrative areas saw most deforestation and what distribution over the three types of deforestation occured there? %% Figure \ref{fig:forestation-change-lowest-level-example} illustrates transitions defined in figure \ref{fig:transitions} on the administrative area which saw the highest level of deforestation, a small area in Cambodia.
-
+With the data in place, finding administratative areas with high level of deforestation is as simple as ordering the areas by their level of deforestation, see table \vref{tab:highest}, and it is also easy to aggregate to top level regions, see table \vref{tab:highest-top-region}, and to countries, see table \vref{tab:highest-country}.
 
 <<forestation-change-lowest-level-example-table, results = "asis">>=
 library(sf); library(terra); library(data.table); library(xtable)
@@ -894,16 +889,14 @@ print(xtable(foo,
              label = "tab:highest"),
       include.rownames = FALSE, booktabs = TRUE, sanitize.colnames.function = identity)
 
-@ 
-
-Similarly, what top level regions saw most deforestation? To get this measure, we calculate a weighted mean, where each are 
+@
 
 <<forestation-change-top-level-regions, results = "asis">>=
 library(globallivingconditions); library(xtable)
 top.level.regions <- my.dt[, list(country = unique(country), f.2000 = unique(round(weighted.mean(forestation.2000, w=size.km2, na.rm = TRUE), 1)), fc.2020 = unique(weighted.mean(forestation.change.2020, w=size.km2, na.rm = TRUE)), size.km2 = sum(size.km2)), by = top.level.region]
 foo <- top.level.regions[head(order(fc.2020), n = 10), list(country = iso.3166$String[match(country, iso.3166$String.code)], region = top.level.region, f.2000, fc.2020, "Area (\\si{\\kilo\\metre\\squared})" = size.km2), ]
 print(xtable(foo, digits = c(0, 0, 0, 1, 1, 0),
-             caption = "The ten administrative areas with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
+             caption = "The ten top level regions with the largest level of deforestation. 'f.2000' = 'the percent of the area that was covered by forest in year 2000', 'fc.2020' = 'forestation change between 2000 and 2020'.",
              label = "tab:highest-top-region"),
       include.rownames = FALSE, booktabs = TRUE, sanitize.colnames.function = identity)
 @
@@ -926,7 +919,9 @@ print(xtable(foo,
 
 \subsection{Consequences of Deforestation}
 \label{lab:consequences}
-The most basic aspect of the consequences of deforestation is given by the simple question: what replaced the forest? Once a interesting area, or top level region, is found, we can also provide more detailed information about the changes in forest states in this area, in particular we can quantify the six different transition to and from the state ``forest'' given in figure \ref{fig:transitions}. 
+The most basic aspect of the consequences of deforestation is given by the simple question: what replaced the forest? While this question goes beyond the purpose of this paper, we will provide an example of the kind of analyses that are possible once an interesting area, or top level region, is found. For a small area, it is computationally feasible to re-analyse the source data using another algorithm that can give more detailed information about the changes in forest states in this area. Aggregating some of the categories in the source data results in three broad categories: forest, short vegetation, cropland and built-up, and the transitions into and from the state ``forest'' is shown in figure \ref{fig:transitions}.
+
+``What replaced the forest?'' can thus be answered on a cell-by-cell level by a visualisation, see figure \vref{fig:focus-deforestation}, where every cell is tracked and colored based on what happened exactly there, or, on an aggregated level, by calculating the percent of the deforested area that turned up as each of the target categories, see table \vref{tab:example-table} for an example of that kind of statistics.
 
 \tikzset{
   trA/.style={draw=transA, very thick},
@@ -1150,9 +1145,15 @@ my.df <- stats.from.polygon(these.regions[1])
 print(xtable(my.df, caption = "Land cover change analysis for the administrative area Kampong Damrei in Chhloung in Krâchéh in Cambodia. This area had the highest level of deforestation and 77 per cent of the total area was deforestated. This table shows what happened to the area that was forest in year 2000. Path 'C', forest to cropland dominated in this area, followed by forest to short vegetation.", label = "tab:example-table"), include.rownames = FALSE, booktabs = TRUE)
 @ 
 
-<<more.data, eval = FALSE>>=
-my.sf <- readRDS("my.sf.new.RDS")
-@ 
+\section{Discussion}
+By aggregating the point data given in \citet{Potapov2022} to administrative areas we have create a data product suitable for analysing both drivers of deforestation and consequences of deforestation. The type of analyses that the data set can be used for ranges from analyses where all areas are of interest, e.g. ``What are the effects of changes in forestation on the living conditions of the people living in the respective areas?'' to studies that focus on areas with high level of deforestation. We have provided two examples of how to analyse such high deforestation areas, visualisations that track changes cell-by-cell and statistical analysis that calculate the distribution of different paths and the proportion non-changing cells in an area of interest.
+
+The division into administrative areas we used was particularly tailed after availability of geo-coded micro data on living conditions provided by the DHS survey programme, and we plan to combine DHS data with the resulting data product in our further analyses of social consequences of deforestation. However, the data product is not tied to DHS data, in fact for many of the included countries, DHS surveys are not available. The areas should still be easy to connect with other data sources, since national statistics generally use administrative areas. In many cases connecting to external data should not require use of any GIS algorithms. This is obviously the case for country level data, where matching should be done using the three letter code given by \href{https://en.wikipedia.org/wiki/ISO_3166-1_alpha-3}{ISO-3166 alpha-3}, but also for subnational data where the region names published by the GADM project can be used for matching \citep{Hijmans_GADM_v41}.
+
+\section{Acknowledgements}
+The project ``Environmental degradation and human wellbeing: On the link between deforestation and living conditions in low- and middle-income countries'' is primarily funded by Marianne and Marcus Wallenberg foundation. University of Gothenburg and University of Birmingham are co-funding the project. 
+
+The data product accompanying this article is based on the data set ``Global Land Cover and Land Use Change, 2000-2020'' \citep{Potapov2022}.
 
 \clearpage
 
