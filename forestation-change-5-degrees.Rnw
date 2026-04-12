@@ -1,3 +1,5 @@
+% \documentclass[12pt,english]{article}
+% \usepackage[top=25mm, bottom=35mm, left=25mm, right=35mm]{geometry}
 \documentclass[10pt,english]{article}
 \usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry} % 16:9 three pages in a row
 \usepackage[english]{babel}
@@ -557,7 +559,16 @@ num.areas <- nrow(my.sf)
 
 @
 
+\title{A dataset of forest cover and change 2000–2020 aggregated to administrative areas for social and environmental research}
+\author{Hans Ekbrand}
+
 \begin{document}
+
+\maketitle
+
+\abstract{We present a dataset of forest cover and forest cover change for 2000–2020 in low- and middle-income countries, constructed by aggregating high-resolution satellite-derived land cover data to \num{\Sexpr{num.areas}} subnational administrative areas. These spatial units are socially and politically meaningful and designed to be compatible with geocoded household survey data from the Demographic and Health Surveys (DHS), while also supporting integration with other datasets.
+
+The dataset includes baseline forest cover in 2000 and changes in forest cover at five-year intervals up to 2020. By eliminating the need for spatial data processing, it enables researchers to analyse deforestation and forest gain using standard statistical tools.}
 
 \section{Motivation}
 Over the last 10.000 years, humans have reshaped large portions of the Earth's surface by cutting down trees and replaced them with crops, substituting forests with farmlands. The last few decades satellite images covering the land surface of the entire globe have been regularly produced. Researchers have developed models that can infer from these satellite images the extent of forest and other types of land and in 2013 a database of forest coverage and deforestation for the entire Earth during the period 2000-2013 was published by \citet{Hansen2013}, and it has been updated regularly \citep{Hansen_GlobalForestChange_2024}. The data points in this database represent very small rectangles, approximately $30\times30 \textrm{m}^2$. Figure \vref{fig:Hansen} is a visualisation of that database. In short, the motivation of this paper and the accompanying data products is to provide forest change data in an aggregated format that is easily usable for social scientists.
@@ -596,7 +607,7 @@ ggplot() +
 
   theme_minimal()
 
-@ 
+@
 
 \section{Data Source}
 \label{sec:source}
@@ -749,10 +760,156 @@ my.crop.f <- function(xmin, ymin, xmax, ymax, my.sf){
 }
 
 @
+
+
+<<quantify.boundary.to.interior>>=
+make_snapped_raster <- function(x, resolution = 1 / 3600, crs = "EPSG:4326") {
+  # Accept either a bbox-like object or a spatial object with an extent
+  if (inherits(x, "SpatVector") || inherits(x, "SpatRaster") || inherits(x, "SpatExtent")) {
+    e <- ext(x)
+    xmin <- xmin(e)
+    xmax <- xmax(e)
+    ymin <- ymin(e)
+    ymax <- ymax(e)
+  } else if (inherits(x, "bbox")) {
+    xmin <- x["xmin"]
+    xmax <- x["xmax"]
+    ymin <- x["ymin"]
+    ymax <- x["ymax"]
+  } else if (is.numeric(x) && length(x) == 4) {
+    # assume c(xmin, xmax, ymin, ymax)
+    xmin <- x[1]
+    xmax <- x[2]
+    ymin <- x[3]
+    ymax <- x[4]
+  } else {
+    stop("x must be a SpatVector, SpatRaster, SpatExtent, bbox, or numeric vector of length 4")
+  }
+
+  # Snap outward to the resolution grid
+  xmin_snap <- floor(xmin / resolution) * resolution
+  xmax_snap <- ceiling(xmax / resolution) * resolution
+  ymin_snap <- floor(ymin / resolution) * resolution
+  ymax_snap <- ceiling(ymax / resolution) * resolution
+
+  rast(
+    xmin = xmin_snap,
+    xmax = xmax_snap,
+    ymin = ymin_snap,
+    ymax = ymax_snap,
+    resolution = resolution,
+    crs = crs
+  )
+}
+
+count_boundary_cells <- function(i) {
+    sf_row <- my.sf[i, ]
+    v <- vect(st_geometry(sf_row))
+
+    ## snapped raster
+    r <- make_snapped_raster(v)
+
+    ## initialize output raster
+    m <- rast(r)
+    values(m) <- NA
+
+    ## 1) cells touched by polygon boundary
+    l <- as.lines(v)
+    edge_ids <- which(!is.na(values(rasterize(l, r, field = 1, touches = TRUE))))
+    m[edge_ids] <- 1
+
+    ## 2) cells whose centers fall inside polygon
+    inside_ids <- which(!is.na(values(rasterize(v, r, field = 1))))
+    m[inside_ids] <- 2
+
+    ## approximate number of fully inside polygon,
+    fully.inside <- round(length(inside_ids) - length(edge_ids)/2)
+  
+    return(boundary_share = length(edge_ids) / fully.inside)
+}
+
+library(future.apply)
+future::plan(multicore)
+ratio.boundary.to.interior <- unlist(future_lapply(sample(nrow(my.sf), 200), count_boundary_cells))
+
+@
+
+\section{Technical validation}
+Raster cells that intersect administrative boundaries are weighted by their proportional overlap with each polygon using the exactextractr package, which implements an area-weighted extraction method. This approach avoids arbitrary assignment of boundary cells and minimizes discretization bias. The impact of boundary effects is further reduced by the relatively large size of the administrative units (average ~2.4 million cells per unit). The average ratio of number of cells on the boundary over the number of cells fully inside is approximately \Sexpr{round(mean(ratio.boundary.to.interior), 3)}, with standard deviation of \Sexpr{round(sd(ratio.boundary.to.interior), 3)}, based on a random sample of 200 areas.
+
+The aggregation procedure does not introduce additional discretization bias from polygon assignment, because cells intersecting boundaries are weighted by their proportional overlap with each administrative unit. Any discretization error is inherited from the source raster rather than created by the aggregation step itself.
+
+\section{Data records}
+\label{sec:data-records}
+
+The dataset described in this study is publicly available at Zenodo (10.5281/zenodo.19221532) and is provided in both spatial and tabular formats to facilitate a wide range of use cases.
+
+The dataset is distributed in two complementary formats:
+
+\begin{description}
+\item [GeoPackage (.gpkg)] This file, «forest-change.gpkg« contains both the geometries of the administrative areas and the associated attribute data. It is suitable for use in geographic information systems (GIS) and spatial analysis workflows in software such as QGIS, ArcGIS, R, and Python.
+\item [Comma-separated values (.csv)] This file, «forest\_change.csv« contains the attribute data only, without geometries. It is intended for statistical analysis and can be readily merged with external datasets using standard data processing tools.
+\end{description}
+Both files contain identical attribute variables and are linked through a common region identifier.
+
 \section{Dataset description}
 \label{sec:dataset-description}
 
-The data set contains, for \num{\Sexpr{num.areas}} administrative areas, their size in square kilometers, the proportion of the area covered by forest in year 2000, the percentage points change in forestation for the years 2005, 2010, 2015 and 2020, the top level region the belong to, and the country the belong to. Table \ref{tab:structure} gives the variable names used along with a description.
+\subsection{Spatial units}
+\label{sec:spatial-units}
+
+The dataset comprises \num{\Sexpr{num.areas}} administrative areas across low- and middle-income countries. Administrative boundaries are based on the GADM database (Hijmans, 2022), with modifications applied in countries where Demographic and Health Surveys (DHS) data are available. In these cases, administrative units are merged where necessary to ensure sufficient spatial coverage of DHS clusters.
+
+Each observation corresponds to a single administrative area defined by a fixed set of boundaries.
+Variables
+
+The dataset includes measures of forest cover and forest cover change, along with identifying and descriptive variables. Table \vref{tab:structure} provides a summary of all variables included in the dataset.
+
+In brief, the dataset contains:
+
+\begin{itemize}
+\item A unique region identifier (region)
+\item Country and administrative region names (country, top\_level\_region)
+\item Area size in square kilometers (size\_km2)
+\item Forest cover in the baseline year 2000 (forestation\_2000)
+\item Changes in forest cover, expressed in percentage points relative to the year 2000, for the years 2005, 2010, 2015, and 2020 (forestation\_2005–forestation\_2020)
+\end{itemize}
+
+Forest cover is defined as the proportion of land area covered by vegetation taller than 5 meters. Forest cover change is calculated as the difference in forest cover between the specified year and the baseline year 2000.
+
+A machine-readable data dictionary describing all variables is provided alongside the dataset.
+
+\subsection{Region identifiers}
+\label{sec:region-identifiers}
+
+The variable region is a structured string identifier constructed by concatenating multiple components separated by periods. These components include:
+
+\begin{itemize}
+\item A country code (ISO 3166; numeric codes are used for countries with DHS coverage and alphabetic codes otherwise)
+\item The name of the top-level administrative region
+\item (Optional) The name of the second-level administrative region
+\item The name(s) of the administrative unit(s)
+ \end{itemize}
+
+In cases where administrative areas have been merged, multiple names are included and separated by a ``+'' symbol.
+
+\subsection{Temporal structure}
+Forest cover is reported for the year 2000, and forest cover change is reported for the years 2005, 2010, 2015, and 2020. All change variables represent differences in forest cover relative to the baseline year 2000 and are expressed in percentage points.
+
+\subsection{Data completeness}
+\label{sec:data-completeness}
+The dataset contains one observation for each administrative area. All variables are complete for all observations, except where noted in the accompanying data dictionary. No missing values are present in the forest cover or forest cover change variables.
+
+\subsection{File organization}
+\label{sec:file-organization}
+
+The Zenodo archive includes the following files:
+\begin{description}
+\item[«forest-change\.gpkg«]  - spatial dataset (geometry and attributes)
+\item[«forest\_change.csv«] - tabular dataset (attributes only)
+\item[«data\_dictionary.csv«] - variable definitions and metadata
+\item[«README.md«] - dataset documentation
+\end{description}
 
 \begin{table}[htbp]
     \centering
@@ -764,13 +921,13 @@ The data set contains, for \num{\Sexpr{num.areas}} administrative areas, their s
       \midrule
       region & A unique string identifier build by concatenating 3 or 4 parts, separated by a dot:
                (1) A country code according to ISO 3166 (numeric for the countries with DHS coverage, letters otherwise); (2) The top level region name; (3, optional) The second level region name, only included if the country provides a hierarchy of more than two levels; (last) the name of the administrative area(s) If the area is a result of mergers all area names are included, separated by a ``+'', e.g. ``116.Kâmpôt.Kampot.Koun Satv + Trapeang sangkae`` for a row representing Cambodia (numeric code 116), top level region ``Kâmpôt'' and resulting from merging the two areas ``Koun Satv'' and ``Trapeang sangkae''\\
-      forestation.2000 & the proportion of the area covered by forest in year 2000 (range:0-1) \\
-      forestation.2005 & the percentage units change in forestation between year 2000 and year 2005 (theoretical range: -100 - 100)\\
-      forestation.2010 & the percentage units change in forestation between year 2000 and year 2010 \\
-      forestation.2015 & the percentage units change in forestation between year 2000 and year 2015 \\
-      forestation.2020 & the percentage units change in forestation between year 2000 and year 2020 \\
-      size.km2 & the size of the area in square kilometers \\
-      top.level.region & name of the top level region (same as the second field in ``region'' above) \\
+      forestation\_2000 & the proportion of the area covered by forest in year 2000 (range:0-1) \\
+      forestation\_2005 & the percentage units change in forestation between year 2000 and year 2005 (theoretical range: -100 - 100)\\
+      forestation\_2010 & the percentage units change in forestation between year 2000 and year 2010 \\
+      forestation\_2015 & the percentage units change in forestation between year 2000 and year 2015 \\
+      forestation\_2020 & the percentage units change in forestation between year 2000 and year 2020 \\
+      size\_km2 & the size of the area in square kilometers \\
+      top\_level\_region & name of the top level region (same as the second field in ``region'' above) \\
       country & the country name according to the ISO 3166 \\
       \bottomrule
     \end{tabular}
@@ -1154,6 +1311,18 @@ The division into administrative areas we used was particularly tailed after ava
 The project ``Environmental degradation and human wellbeing: On the link between deforestation and living conditions in low- and middle-income countries'' is primarily funded by Marianne and Marcus Wallenberg foundation. University of Gothenburg and University of Birmingham are co-funding the project. 
 
 The data product accompanying this article is based on the data set ``Global Land Cover and Land Use Change, 2000-2020'' \citep{Potapov2022}.
+
+<<export.to.generic.data.format>>=
+st_write(my.sf, "forest-change.gpkg", layer = "forest_change", driver = "GPKG", append=FALSE)
+file.copy(from = "forest-change.gpkg", to = paste0(path.to.artifacts, "forest-change.gpkg"))
+unlink("forest-change.gpkg")
+forest.change.dt <- my.dt
+colnames(forest.change.dt) <- gsub(".", "_", colnames(forest.change.dt), fixed = TRUE)
+write.csv(forest.change.dt, file = "forest-change.csv")
+file.copy(from = "forest-change.csv", to = paste0(path.to.artifacts, "forest-change.csv"))
+unlink("forest-change.csv")
+
+@ 
 
 \clearpage
 
