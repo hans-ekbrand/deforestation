@@ -1,6 +1,9 @@
-%% This is intendend to be used as a child document to forestation-change-5-degrees.Rnw
-%% When running from scratch, make sure the child document exists before calling it. The child document is part of the package `globallivingconditions`
-%% When "dhs.grid.RDS" already exists, this document does not require a full run of `download.and.harmonise()` in `globallivingconditions`
+%% This is intendend to be used as a child document to deforestation.Rnw
+%% It will create a SF object with administrative divisions needed by deforestation.Rnw
+
+%% if dhs.grid.RDS exists, it will not create it by running a full DHS harmonisation cycle.
+%% if dhs.grid.RDS does not exist, make sure to install the package `globallivingconditions`
+%% before trying to run its child document dhs-debug-child.Rnw
 
 <<grid-creation-opts.chunk.parent, echo = FALSE>>=
 opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE,
@@ -28,8 +31,6 @@ gis.path.sf.common.path <- paste0("Deforestation and poverty - ",
 country.data.path <- paste0("~/annex/projekt/",
       "global-living-conditions/stora-eller-statiska-filer/",
       "deforestation/Country data/")
-africa.map.path <- paste0("~/annex/projekt/child-poverty/",
-                          "statiska-eller-stora-filer/")
 
 if(file.exists("/mnt/windows")) {
     laptop.common <- paste0("/mnt/windows/")
@@ -67,7 +68,6 @@ if(file.exists("/mimer/NOBACKUP/groups/globalpoverty1/")) {
                                  "globalpoverty1/hans/Deforestation/")
     country.data.path <- paste0(deforestation.path,
                                 "Country data/")
-    africa.map.path <- "~/maps/"
 }
 
 @
