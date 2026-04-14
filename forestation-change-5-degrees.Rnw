@@ -1,13 +1,13 @@
-% \documentclass[12pt,english]{article}
-% \usepackage[top=25mm, bottom=35mm, left=25mm, right=35mm]{geometry}
-\documentclass[10pt,english]{article}
-\usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry} % 16:9 three pages in a row
+%% Compile with xelatex
+
+\documentclass[12pt,english,a4paper]{article}
+\usepackage[top=32mm, bottom=32mm, left=1.7cm, right=1.7cm]{geometry}
 \usepackage[english]{babel}
 \usepackage{longtable}
 \usepackage{fontspec}
 \usepackage{booktabs}
 \usepackage{hyperref}
-\usepackage{varioref} %% vref
+% \usepackage{varioref} %% vref, no longer used
 \usepackage{paralist} %% compactenum
 \usepackage{siunitx} %% \num
 \usepackage{IEEEtrantools} % proper indentation for multi-line equations
@@ -23,7 +23,7 @@
 % Caption styling - reduced spacing
 \usepackage{caption}
 \captionsetup{
-  skip=12pt
+  skip=12pt,font=small,width=\linewidth
 }
 
 \usepackage{tikz}
@@ -571,7 +571,7 @@ num.areas <- nrow(my.sf)
 The dataset includes baseline forest cover in 2000 and changes in forest cover at five-year intervals up to 2020. By eliminating the need for spatial data processing, it enables researchers to analyse deforestation and forest gain with standard statistical tools.}
 
 \section{Motivation}
-Over the last 10.000 years, humans have markedly reshaped large portions of the Earth's surface by cutting down trees for timber or turning forests to farmlands among other notable anthropogenic impacts on forest ecosystems such as climate change.\footnote{About half of the deforestation took place before year 1900 \citep{owid-global-forest-transition}.} The last few decades satellite images covering the land surface of the entire globe have been regularly produced. From these satellite images, researchers have developed models that can infer the extent of forests and other types of land. In 2013 a database of forest coverage and deforestation for the entire Earth during the period 2000-2013 was published by \citet{Hansen2013}, and it has been updated regularly \citep{Hansen_GlobalForestChange_2024}. The data points in this database represent very small rectangles, approximately $30\times30 \textrm{m}^2$. Figure \vref{fig:Hansen} is a visualisation of that database. The motivation of this paper and the accompanying data products is to provide forest change data in an aggregated format that is easily usable for social scientists.
+Over the last 10.000 years, humans have markedly reshaped large portions of the Earth's surface by cutting down trees for timber or turning forests to farmlands among other notable anthropogenic impacts on forest ecosystems such as climate change.\footnote{About half of the deforestation took place before year 1900 \citep{owid-global-forest-transition}.} The last few decades satellite images covering the land surface of the entire globe have been regularly produced. From these satellite images, researchers have developed models that can infer the extent of forests and other types of land. In 2013 a database of forest coverage and deforestation for the entire Earth during the period 2000-2013 was published by \citet{Hansen2013}, and it has been updated regularly \citep{Hansen_GlobalForestChange_2024}. The data points in this database represent very small rectangles, approximately $30\times30 \textrm{m}^2$. Figure \ref{fig:Hansen} is a visualisation of that database. The motivation of this paper and the accompanying data products is to provide forest change data in an aggregated format that is easily usable for social scientists.
 
 \begin{figure}[ht]
     \centering
@@ -587,10 +587,10 @@ If one wants to explain \emph{why} deforestation takes place, or describe and ex
 
 As our primary interest lies in the connections between \emph{deforestation and poverty}, we have focused our computational resources on developing analyses for low- and middle income countries (mainly in Latin America, Africa, and South Asia). In fact, we have used the geographical availability of micro data on living conditions from the Demographic and Health Surveys (DHS) to guide the choice of spatial units, making the data product particularly suitable for users of DHS data \citet{Wang2021}. However, the algorithms we have developed are flexible in two ways: (1) they work with any geographical partitioning, (2) they work with any part of the world (not only the southern hemisphere). Given an alternative partitioning of some area of the Earth, quite a bit of disk space, internet access and some computation time, alternative versions of the data products can easily be produced. This document both serves both as a manual for using the aggregated database, and as the authoritative source for how it was built.\footnote{The PDF is build by the same program that produces the data products, and the source code for this program is publicly available here \citep{deforestation_repo}} Figure \ref{fig:full-grid} visualises the partitioning we developed and based the data product on.
 
-<<full-grid, fig.cap = "Administrative divisions used in the analysis.", dpi = 400, fig.width=6, fig.height=2.4>>=
+%% fig.width=6, fig.height=2.4 was good, but too large (too wide). Scale down so that it fits \linewidth
+
+<<full-grid, fig.cap = "Administrative divisions used in the analysis.", dpi = 400, fig.width=125/25.4, fig.height=125/25.4 / 2.5, fig.align = "center">>=
 library(sf); library(ggplot2)
-## par(mar = c(0, 0, 0, 0))
-## plot(st_geometry(full.grid.sf), lwd = 0.05)
 
 ggplot() +
     ## graticule behind polygons
@@ -634,7 +634,7 @@ Almost all countries provide a tree-like hierarchy of administrative borders: to
 \subsection{Principles for aggregation}
 \label{sec:princ-aggr}
 
-To illustrate the principles used for aggregation consider an artificial example of a tiny administrative area for which we can see the values recorded for each $30\times30\textrm{m}^2$ cell in the source data. See figure \vref{fig:sample-area}.\footnote{This shape in the example is from an actual administrative area, but the cells size are enlargened and the the values in the cells are randomized.}
+To illustrate the principles used for aggregation consider an artificial example of a tiny administrative area for which we can see the values recorded for each $30\times30\textrm{m}^2$ cell in the source data. See Figure \ref{fig:sample-area}.\footnote{This shape in the example is from an actual administrative area, but the cells sizes are enlargened and the values in the cells are randomized.}
 
 <<sample-area, fig.cap = "Illustration of the format of source data and an administrative area.", fig.width = 3, fig.height = 3, fig.align = "center">>=
 library(sf)
@@ -862,7 +862,7 @@ The dataset comprises \num{\Sexpr{num.areas}} administrative areas across low- a
 Each observation corresponds to a single administrative area with a fixed set of boundaries.
 
 \subsection{Variables}
-The dataset includes measures of forest cover and forest cover change, along with identifying and descriptive variables. Table \vref{tab:structure} summarises all variables included in the dataset.
+The dataset includes measures of forest cover and forest cover change, along with identifying and descriptive variables. Table \ref{tab:structure} summarises all variables included in the dataset.
 
 In brief, the dataset contains:
 
@@ -948,9 +948,10 @@ forest.area.2020 <- forestation.2020 / 100 * size.km2
 
 @ 
 
-Figure \vref{fig:forestation} shows the average forest coverage in the included administrative areas in the year 2000. This allows us to demonstrate that (a) even if only the averages are used for each area, the areas are so small that the figure shows quite a lot of detail and (b) an informal visual confirmation that the aggregation algorithm appears to be correct.
+Figure \ref{fig:forestation} shows the average forest coverage in the included administrative areas in the year 2000. This allows us to demonstrate that (a) even if only the averages are used for each area, the areas are so small that the Figure shows quite a lot of detail and (b) an informal visual confirmation that the aggregation algorithm appears to be correct.
 
-<<forestation, fig.cap = "Average forest coverage in the administrative areas in the year 2000. Country borders added.", dpi = 400, fig.width=6, fig.height=3>>=
+%% fig.width=6, fig.height=3
+<<forestation, fig.cap = "Average forest coverage in the administrative areas in the year 2000. Country borders added.", dpi = 400, fig.width=125/25.4, fig.height=125/25.4 / 2, fig.align = "center">>=
 library(sf); library(ggplot2)
 
 ggplot() +
@@ -989,7 +990,8 @@ ggplot() +
 
 In the year 2000, \num{\Sexpr{round(forestation.2000, 2)}}\% of the total area included in the dataset was covered by forest; in the year 2020 that number was down by \num{\Sexpr{round(deforestation.2020, 2)}} percentage points to \num{\Sexpr{round(forestation.2020, 2)}}\%. The main result is visualised in Figure \ref{fig:forestation-change-temporary-5-degrees} which shows the change in average forest coverage for all administrative areas. This zoomed out perspective immediately gives some hints as to where deforestation was most intense, eastern Amazon and Cambodia stand out, but Nicaragua, Uganda, Tanzania and Mozambique also have large administrative areas with high levels of deforestation.
 
-<<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage 2000-2020 per administrative area. Country borders added."), fig.width=6, fig.height = 3, dpi = 400>>=
+%% fig.width=6, fig.height = 3, 
+<<forestation-change-temporary-5-degrees, fig.cap = paste0("Change in average forest coverage 2000-2020 per administrative area. Country borders added."), fig.width=130/25.4, fig.height=130/25.4 / 2, fig.align = "center", dpi = 400>>=
 library(ggplot2)
 
 ## Prepare the scaling by finding the largest absolute value
@@ -1083,7 +1085,7 @@ print(xtable(foo,
 \label{lab:consequences}
 One basic aspect of the consequences of deforestation is given by the simple question: what replaced the forest? While this question goes beyond the purpose of this paper, we will provide an example of the kind of analysis possible once an interesting area or top-level region is identified. For a small area, it is computationally feasible to re-analyse the source data using another algorithm to obtain more detailed information about the changes in forest states in this area. Aggregating some of the categories in the source data results in three broad categories: forest, short vegetation, cropland and built-up, and the transitions into and from the state ``forest'' are shown in Figure \ref{fig:transitions}.
 
-``What replaced the forest?'' can thus be answered on a cell-by-cell level by a visualisation, see figure \vref{fig:focus-deforestation}, where every cell is tracked and colored based on what occured there, or, on an aggregated level, by calculating the percentage of the deforested area that turned up as each of the target categories, see Table \ref{tab:example-table} for an example.
+``What replaced the forest?'' can thus be answered on a cell-by-cell level by a visualisation, see Figure \ref{fig:focus-deforestation}, where every cell is tracked and colored based on what occured there, or, on an aggregated level, by calculating the percentage of the deforested area that turned up as each of the target categories, see Table \ref{tab:example-table} for an example.
 
 \tikzset{
   trA/.style={draw=transA, very thick},
@@ -1135,7 +1137,7 @@ One basic aspect of the consequences of deforestation is given by the simple que
 \draw[->, bend left=15, trF] (s) to node[above, sloped, text=transF] {F} (f3);
 
 \end{tikzpicture}
-\caption{Six transitions to and from the state ``forest''. ``A'' represents deforestation, forest to short vegetation cover, while ``B'' is the inverse: transition from short vegetation cover to forest, ie. forestation. B, D and F represents way that forestation can \emph{increase}, while A, C and E are variants of \emph{deforestation}.}
+\caption{Six transitions to and from the state ``forest''. ``A'' represents deforestation, forest to short vegetation cover, while ``B'' is the inverse: transition from short vegetation cover to forest, ie. forestation. B, D and F represent ways that forestation can \emph{increase}, while A, C and E are variants of \emph{deforestation}.}
 \label{fig:transitions}
 \end{figure}
 
@@ -1237,7 +1239,9 @@ stats.from.polygon <- function(my.region){
 
 @
 
-<<focus-deforestation, fig.cap = "Visualisation of what happened to the deforested land in the administrative area with the highest level of deforestation.", fig.width = 6, fig.height = 3>>=
+%% fig.width = 6, fig.height = 3, 
+
+<<focus-deforestation, fig.cap = "Visualisation of what happened to the deforested land in the administrative area with the highest level of deforestation.", fig.width=120/25.4, fig.height=120/25.4 / (600/350), fig.align = "center">>=
 forest_codes <- c(27:48, 127:148)   # >= 5m trees on terra firma + wetlands
 short_vegetation_codes <- c(0:26, 100:126)
 cropland_codes <- c(244)
@@ -1297,7 +1301,7 @@ coltab(r) <- data.frame(
   )
 )
 
-plot(r)
+plot(r, mar = c(1, 1, 0, 10))
 plot(my.polygon, add = TRUE, col = NA)
 
 @ 
@@ -1314,7 +1318,7 @@ By aggregating the point data form \citet{Potapov2022} to administrative areas w
 The division into administrative areas we used was tailored to availability of geo-coded micro data on living conditions from the DHS survey programme, and we plan to combine DHS data with the resulting product in our further analyses of social consequences of deforestation. However, the data product is not tied to DHS data; in fact, for many of the countries included, DHS surveys are not available. The areas should still be easy to connect with other data sources, since national statistics generally use administrative areas. In many cases connecting to external data should not require use of any GIS algorithms. This is obviously the case for country-level data, where matching should be done using the three-letter code given by \href{https://en.wikipedia.org/wiki/ISO_3166-1_alpha-3}{ISO-3166 alpha-3}, but also for subnational data where the region names published by the GADM project can be used for matching \citep{Hijmans_GADM_v41}.
 
 \section{Acknowledgements}
-The project ``Environmental degradation and human wellbeing: On the link between deforestation and living conditions in low- and middle-income countries'' is primarily funded by the Marianne and Marcus Wallenberg Foundation. University of Gothenburg and University of Birmingham are co-funding the project. 
+The project ``Environmental degradation and human wellbeing: On the link between deforestation and living conditions in low- and middle-income countries'' is primarily funded by the Marianne and Marcus Wallenberg Foundation, ref.no.: MMW 2024.0114. University of Gothenburg and University of Birmingham are co-funding the project. 
 
 The data product accompanying this article is based on the data set ``Global Land Cover and Land Use Change, 2000-2020'' \citep{Potapov2022}.
 
