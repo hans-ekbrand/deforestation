@@ -1,0 +1,359 @@
+\documentclass[10pt,english]{article}
+\usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry}
+\usepackage[english]{babel}
+\usepackage{booktabs}
+\usepackage{amsmath}
+
+\title{analyses for Paper III}
+\begin{document}
+
+\section{Impute forest change data for years without observations}
+The original source only provides data for every fifth year, starting at year 2000. We interpolate values for the intervening years. But to avoid doing computations for areas without living conditions data, we first match the GIS-coordinates in our DHS dataset to the set of areas in the deforestation data and only keep the areas that has any living condition data points.
+
+\section{Matching point data from DHS with areas in the deforestation data}
+
+The plan is as follows.
+
+\begin{enumerate}
+\item Import a dataset produced by the package globallivingconditions, this dataset contains individual records with GIS coordinates.
+\item Discard unneeded columns from that dataset.
+\item Import the administrative boundaries produced by the package globallivingconditions. This is a sub set of the boundaries in the published forest change dataset, and it is most efficient to work with this subset directly.
+\item Use the unique GIS-coordinates from DHS to create a formal SpatialPoints object with the same CRS defintion as the set of boundaries
+\item Use a ``find the area into which this point falls'' GIS-function to classify all points.
+\item Import the CSV version (non-geometric) version of the deforestation dataset.
+\item Discard the rows in that dataset that represent areas which has no DHS data point or has no deforestation data (a few lakes)
+\item Convert deforestation data from wide to long format
+\item Impute deforestation data for the intervening four year intervals without observations.
+\item Make improved estimates of IWI per area per observed year, based on years of education for a constant cohort (see below).
+\item Merge deforestation data for year $x+1$ with DHS data for year $x$ by area names. This way we can later use DHS data as independent variables and deforestation data as dependent variable, since the DHS data was recored the year \emph{before} the year of the deforestation data.
+\end{enumerate}
+
+\section{Improving average IWI estimates}
+The DHS data has some useful features at the individual level that can be used to reduce sampling introduces by the DHS (since they do not repeatedly measure the same individuals in an area), specifically we can use years of education for an invariant cohort as an instrument to get a more stable estimate of average IWI in an area. The idea is that by using an invariant cohort we detect differences between the samples and control for such differences. We want persons that are young enough to included when the last surveys are made (max 65 years old in 2024) and old enough to have finished their education when the first surveys were made (at least 25 years in 2000), which gives that they should be born between 1960 and 1976.
+
+<<opts.chunk.parent, echo = FALSE>>=
+opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE,
+fig.width=4, fig.height=4, fig.pos = 'htb', tidy.opts=list(blank=FALSE,
+width.cutoff=50), background='white', tidy=TRUE, error=TRUE, message=FALSE,
+dev="png", dpi = 200, autodep = TRUE)
+opts_knit$set(root.dir = ".")
+options(scipen=999) ## Avoid scientific formating of large numbers.
+@ 
+
+<<import.reduce.match.impute>>=
+library(data.table)
+
+## 1. Import the DHS data
+
+## the source of final.RDS was original here:
+## "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/
+## University of Gothenburg/Deforestation and poverty - Paper I/final.RDS"
+
+my.dt <- readRDS("final.RDS")
+
+
+## 2. Discard unneeded columns
+
+## This dataset is large, 27.000.000 rows, 108 variables
+## So keep only what is needed in a smaller data set regain some RAM with garbage collection.
+
+keep.these <- c("country.code.ISO.3166.alpha.3", "indian.states.as.countries",
+                "year.of.interview", "ClusterID", "iwi", "education.in.years",
+                "age", "lon", "lat", "wbgi_gee", "wdi_gnicapatlcur")
+remove.these <- setdiff(colnames(my.dt), keep.these)
+my.dt[, (remove.these) := NULL]
+gc(verbose = FALSE)
+
+
+## 3. Import the administrative boundaries
+
+## open a file with the partitionings. We could use the published geopackage
+## file here, but it includes a lot of areas for which there is no DHS data,
+## so it is faster to use the grid that only covers the areas for which we
+## DO have dhs data.
+
+## Again the original source was here: "~/mnt/poverty/media/sf_Our_data/Hans/
+## Onedrive/University of Gothenburg/Deforestation and poverty - Paper I/
+## dhs.grid.RDS"
+dhs.grid <- readRDS("dhs.grid.RDS") ## 18956 areas, instance of "SpatialPolygons"
+
+
+## 4. Create a SpatialPoints object
+
+## all members of the same cluster should have the same GIS coordinates,
+## avoid repeatedly classifying the same point.
+## apply the "over" method on an aggregated object with clusters as units.
+
+## Just pick the first row with non missing lon, lat and use those
+## coordinates for each cluster.
+setkey(my.dt, ClusterID)
+these.ids <- my.dt[is.na(lon) == FALSE & is.na(lat) == FALSE, unique(ClusterID), ]
+these.rows <- match(these.ids, my.dt$ClusterID)
+cluster.coordinates <- my.dt[these.rows, list(ClusterID, lon, lat), ]
+
+library(sp)
+my.points <- SpatialPoints(coords = data.frame(
+                               x = cluster.coordinates$lon,
+                               y = cluster.coordinates$lat))
+
+
+proj4string(my.points)   <- proj4string(dhs.grid)
+
+## 5. Classify all points
+
+my.map <- over(x = my.points, y = dhs.grid)
+
+## use my.map to infer the area names for each cluster
+cluster.coordinates$area.name <- names(dhs.grid)[my.map]
+
+## before merging data back to my.dt, remove the redundant columns lon and lat
+cluster.coordinates[, (c("lon", "lat")) := NULL, ]
+
+## merge back to my.dt
+my.dt <- merge(my.dt, cluster.coordinates)
+my.dt$lon.lat <- NULL
+
+## 6. Import the CSV version of the deforestation data
+
+deforestation.dt <- data.table(read.csv("forest_change.csv"))
+
+## 7. only keep deforestation data about regions with DHS data.
+deforestation.dt <- deforestation.dt[region %in% unique(my.dt$area.name) &
+                      is.na(deforestation.dt$forestation_2000) == FALSE, ]
+
+## 8 Convert forestation data from wide to long
+deforestation_long.dt <- melt(
+  deforestation.dt,
+  id.vars = c(
+    "region",
+    "forestation_2000",
+    "size_km2",
+    "top_level_region",
+    "country"
+  ),
+  measure.vars = patterns("^forestation_change_"),
+  variable.name = "year",
+  value.name = "forestation_change"
+)
+
+deforestation_long.dt[, year := as.integer(sub("forestation_change_", "", year))]
+
+## 9 Impute forestation change data for the intervening years
+
+## add a row for each area at year 2000 with forestation_change == 0,
+## to make imputations possible
+## simply copy the static columns
+unique.regions <- unique(deforestation_long.dt$region)
+deforestation.dt <- rbind(deforestation_long.dt, data.table(region = unique.regions,
+   forestation_2000 = deforestation_long.dt[match(unique.regions, region), forestation_2000],
+   size_km2 = deforestation_long.dt[match(unique.regions, region), size_km2],
+   top_level_region = deforestation_long.dt[match(unique.regions, region), top_level_region],
+   country = deforestation_long.dt[match(unique.regions, region), country],
+   year = 2000,
+   forestation_change = 0))
+
+## sort by region and year
+setkey(deforestation.dt, region, year)
+
+## Create a minimal data set with only the columns needed for imputation
+deforestation.imputation.dt <- deforestation.dt[, list(region, year,
+                                                    forestation_change), ]
+
+# Create full yearly grid
+deforestation_yearly.dt <- deforestation.imputation.dt[
+  CJ(region = unique(region), year = 2000:2020),
+  on = .(region, year)
+]
+
+# Define five-year interval
+deforestation_yearly.dt[ , interval_start := year - ((year - 2000) %% 5) ]
+deforestation_yearly.dt[ , interval_end := pmin(interval_start + 5, 2020) ]
+
+## Remove areas with only missing data
+only.missing.in.these.regions <- deforestation_yearly.dt[year == 2005 &
+                                        is.na(forestation_change), region]
+deforestation_yearly.dt <- deforestation_yearly.dt[region %in%
+                                 only.missing.in.these.regions == FALSE, ]
+
+## use approx()
+deforestation_yearly.dt[ ,
+  forestation_change := approx(
+    x = year[!is.na(forestation_change)],
+    y = forestation_change[!is.na(forestation_change)],
+    xout = year
+  )$y,
+  by = region
+]
+
+## Drop the auxilliary columns
+deforestation_yearly.dt[, (c("interval_start", "interval_end")) := NULL, ]
+
+## save data common for each area.
+area.commons <- my.dt[, list(
+    country.code.ISO.3166.alpha.3 = unique(country.code.ISO.3166.alpha.3)), by = area.name]
+
+my.dt <- my.dt[, c("area.name", "year.of.interview", "iwi", "education.in.years", "age")]
+saveRDS(my.dt, file = "kuznet.1.RDS")
+
+## Discard auxilliary objects
+rm(deforestation.dt, deforestation_long.dt, unique.regions,
+   only.missing.in.these.regions, deforestation.imputation.dt,
+   cluster.coordinates, dhs.grid, my.points, these.ids, these.rows,
+   keep.these, remove.these, my.map, my.dt)
+
+gc(verbose = FALSE)
+
+@
+
+Consider the area 24.Luanda.Viana.Viana Sede in Angola, from which we have five measurements (or four, depending on how you count since one survey was collected over two years, 2015 and 2016). In addition to the average IWI for each year, also calculate the average education for a cohort that is invariant over time. The changes in education for this cohort should just be sampling noise, i.e. for years with higher values the sampled households happen to be a bit more wealthy (assuming higher education in general leads to slightly higher level of wealth), which leads to an overestimation of the true average IWI, and years with particularly low average education in the sampled members of the cohort, we assume the average IWI is underestimated.
+
+\begin{align}
+y_{it} &= \beta_0 + \beta_1 \textrm{year}_{it} + \varepsilon_{it} \tag{A} \\[1em]
+y_{it} &= \beta_0 + \beta_1 \textrm{year}_{it} + \beta_2 \textrm{education}_{it} + \varepsilon_{it} \tag{B} \\[1em]
+y_{it} &= \beta_0 + \beta_1 \textrm{year}_{it} + \beta_2 \textrm{education}_{it} \notag \\
+       &\quad + u_{0i} + u_{1i} \, \textrm{year}_{it} \notag \\
+       &\quad + v_{0r(i)} + v_{1r(i)} \, \textrm{year}_{it} \notag \\
+       &\quad + w_{0c(i)} + w_{1c(i)} \, \textrm{year}_{it} \notag \\
+       &\quad + \varepsilon_{it} \tag{C} \\
+\end{align}
+\noindent
+where the random terms are specified as:
+\begin{align*}
+(u_{0i}, u_{1i}) &\sim \mathcal{N}(0, \Sigma_{\textrm{area}}) \notag \\
+(v_{0r}, v_{1r}) &\sim \mathcal{N}(0, \Sigma_{\textrm{region}}) \notag \\
+(w_{0c}, w_{1c}) &\sim \mathcal{N}(0, \Sigma_{\textrm{country}}) \notag \\
+\varepsilon_{it} &\sim \mathcal{N}(0, \sigma^2) 
+\end{align*}
+
+<<iwi.0, results = "asis", fig.cap = "Different ways of estimating average IWI in one area. Based on data in table \\ref{tab:iwi1}.", dev = "png", dpi = 200, fig.width = 7, fig.height = 4.5>>=
+library(xtable); library(data.table);
+library(globallivingconditions); library(lme4)
+my.dt <- readRDS("kuznet.1.RDS")
+
+prepare.data.f <- function(my.dt) {
+    these <- which(is.na(my.dt$area.name) == FALSE)
+    foo <- my.dt[these, in.the.cohort := (year.of.interview - age) > 1959 & (year.of.interview - age) < 1977, ]
+    bar <- foo[these, list(average.iwi = mean(iwi, na.rm = TRUE)), by = list(year.of.interview, area.name)]
+    baz <- foo[in.the.cohort == TRUE, list(average.education = mean(education.in.years, na.rm = TRUE)), by = list(year.of.interview, area.name)]
+    bal <- merge(baz[is.na(average.education) == FALSE, ], bar[is.na(average.iwi) == FALSE, ])
+    bal[, country := iso.3166$String[match(sapply(area.name, function(x) { strsplit(x, split = ".", fixed = TRUE)[[1]][1] }), iso.3166$numeric)], ]
+    bal[, top.level.region := paste(country, sapply(area.name, function(x) { strsplit(x, split = ".", fixed = TRUE)[[1]][2] }), sep = "."), ]
+    bal <- bal[, c("country", "top.level.region", "area.name", "average.iwi", "year.of.interview", "average.education")]
+    
+    bal[, year := scale(year.of.interview), ]
+    bal[, iwi := scale(average.iwi), ]
+    bal[, education := scale(average.education), ]
+    return(bal)
+}
+
+bal <- prepare.data.f(my.dt)
+
+library(lme4)
+my.fit <- lmer(iwi ~ year + education + (year | area.name) + (year | top.level.region) + (year | country), data = bal)
+
+## z-transform by other scaling info from an existing data.frame
+z.transform.f <- function(value, varname, df){
+    (value - attr(df[[varname]], which = "scaled:center")) / attr(df[[varname]], which = "scaled:scale")
+}
+
+inverse.z.transform.f <- function(value, varname, df){
+    value * attr(df[[varname]], which = "scaled:scale") + attr(df[[varname]], which = "scaled:center")
+}
+
+# One row per area with grouping variables and area-specific mean education
+area_info <- bal[, .(
+  country = first(country),
+  top.level.region = first(top.level.region),
+  education = mean(education, na.rm = TRUE)
+), by = area.name]
+
+# All area-year combinations
+pred_grid <- CJ(
+  area.name = unique(bal$area.name),
+  year.of.interview = 2000:2024
+)
+
+pred_grid <- area_info[pred_grid, on = "area.name"]
+
+# Scale year using original scaling attributes from bal
+pred_grid[, year := z.transform.f(year.of.interview, "year", bal)]
+
+# Predict scaled IWI
+pred_grid[, iwi_pred_scaled := predict(
+  my.fit,
+  newdata = pred_grid,
+)]
+
+# Convert back to original IWI scale
+pred_grid[, iwi_pred := inverse.z.transform.f(iwi_pred_scaled, "iwi", bal)]
+
+## And education too
+pred_grid[, education := inverse.z.transform.f(education, "education", bal)]
+
+## clean up
+pred_grid[, (c("year", "iwi_pred_scaled")) := NULL, ]
+
+alt.dt <- pred_grid[area.name == "24.Luanda.Viana.Viana Sede" & year.of.interview %in% my.dt[area.name == "24.Luanda.Viana.Viana Sede", year.of.interview], list(area.name, year.of.interview, predicted.iwi.lme4 = iwi_pred), ]
+
+temp.f <- function(my.dt, alternative.dt) {
+    foo <- my.dt[area.name == "24.Luanda.Viana.Viana Sede", ]
+    foo[, area.name := NULL, ]
+    foo[, in.the.cohort := (year.of.interview - age) > 1959 &
+                     (year.of.interview - age) < 1977, ]
+    bar <- foo[, list(average.iwi = mean(iwi, na.rm = TRUE)), by = year.of.interview]
+    baz <- foo[in.the.cohort == TRUE, list(average.education = mean(education.in.years, na.rm = TRUE)), by = year.of.interview]
+    bal <- merge(bar, baz)
+    print(xtable(bal, digits = c(0, 0, 1, 1), caption = "Average IWI in 24.Luanda.Viana.Viana Sede in Angola for the years of DHS observations. The education average is only based on persons born 1960-1976, while the IWI average is based on all persons in the DHS. IWI correlates with Eduacation average, but Education average in the population for this cohort should be almost invariant. Changes in education is thus a good measure of the sampling noise in the DHS. A simple regression that does not account for this sampling noise would fail to account for the fact that average education is particular low at the first measurement (year 2006) which also saw the lowest average IWI.", label = "tab:iwi1"), include.rownames = FALSE, booktabs = TRUE)
+    my.fit <- lm(average.iwi ~ year.of.interview + average.education, data = bal)
+    bal$predicted.iwi <- predict(my.fit, newdata = data.frame(average.education = rep(mean(bal$average.education), nrow(bal)), year.of.interview = bal$year.of.interview))
+    my.fit.simple <- lm(average.iwi ~ year.of.interview, data = bal)
+    bal$predicted.iwi.simple <- predict(my.fit.simple)
+    
+    plot(bal$year.of.interview, bal$average.iwi, type = "b", ylab = "average IWI", xlab = "")
+    lines(bal$year.of.interview, bal$predicted.iwi.simple, type = "b", col = "red")
+    lines(bal$year.of.interview, bal$predicted.iwi, type = "b", col = "green")
+    lines(alternative.dt$year.of.interview, alternative.dt$predicted.iwi.lme4, type = "b", col = "orange")
+    par(xpd = TRUE)  # allow drawing outside plot region
+    legend(x="top",
+           inset = c(0, -0.15),     # move below plot
+           ncol = 2,
+           bty = "n",
+           legend = c("observed average", "A. simple regression", "B .regression with control for education", "C. hierarchical regression with education"),
+           col = c("black", "red", "green", "orange"), lwd = 1, cex = 0.8)
+}
+
+temp.f(my.dt, alt.dt)
+
+@ 
+
+The red, orange and green lines are all based on regression analysis: the red line represents a regression with a single independent variable, ``year.of.interview'', while the green line is based on both ``year.of.interview'', and ``education.in.years'' (see table \ref{tab:iwi1}).
+
+
+% To be clear about what we record, consider the forestation development in this area which starts with an increase followed by a decrease.
+
+<<show-derivatives, eval=FALSE>>=
+## 10. Merge deforestation data and DHS data by area names, shifted by
+## one year so that living conditions preceeds deforestation.
+
+my.dt[, year := year.of.interview + 1, ]
+
+## Find cases with growth and loss
+foo <- deforestation_yearly.dt[ , max(forestation_change) > 0 &
+                                  min(forestation_change) < 0, by = region]
+deforestation_yearly.dt[region == foo$region[head(which(foo$V1), n = 1)],
+                        plot(year, forestation_change, type = "b"), ]
+@
+
+
+\clearpage
+
+\appendix
+% The file final.RDS it is created automatically by the function \textrm{download.and.harmonise()} in the package \textrm{globallivingconditions}. The invokation of \textrm{download.and.harmonise()} was done by the template \textrm{dhs-debug-child.Rnw} which dfines the parameters used. As for parameters, the only non-default parameters used are
+
+% \begin{verbatim}
+%     file.types.to.download = c("PR", "GE", "IR", "MR", "KR"),
+%     variable.packages = c("wealth", "india"),
+% \end{verbatim}
+
+% which means: ``get all file types, including the GIS ones'' and ``calculate IWI, include some special stuff for India''. The India stuff is to (a) create an alterantive country variable based on the indian state name and (b) use historical state division so that the set of states is constant, ie. undo state splits that occured after 1990 and (c) include a variable for the household weight within the indian state.
+\end{document}
