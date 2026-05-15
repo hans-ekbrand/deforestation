@@ -101,7 +101,8 @@ my.dt <- merge(my.dt, cluster.coordinates)
 my.dt$lon.lat <- NULL
 
 ## 6. Import the CSV version of the deforestation data
-
+## original source: My data set via zenodo
+## https://zenodo.org/records/19221532/files/forest_change.csv?download=1
 deforestation.dt <- data.table(read.csv("forest_change.csv"))
 
 ## 7. only keep deforestation data about regions with DHS data.
