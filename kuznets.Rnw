@@ -215,7 +215,7 @@ The DHS data has some useful features at the individual level that can be used t
 
 Consider the area 24.Luanda.Viana.Viana Sede in Angola, from which we have five measurements (or four, depending on how you count since one survey was collected over two years, 2015 and 2016). In addition to the average IWI for each year, also calculate the average education for a cohort that is invariant over time.
 
-<<iwi.0, results = "asis">>=
+<<iwi.0>>=
 library(xtable); library(data.table);
 library(globallivingconditions); library(lme4)
 my.dt <- readRDS("kuznet.1.RDS")
@@ -239,7 +239,17 @@ prepare.data.f <- function(my.dt) {
 bal <- prepare.data.f(my.dt)
 
 library(lme4)
-my.fit <- lmer(iwi ~ year + education + (year | area.name) + (year | top.level.region) + (year | country), data = bal)
+## A model with correlated intercept and slope for area yields a correlation between them at 1.0
+## my.fit <- lmer(iwi ~ year + education + (year | area.name) + (year | top.level.region) + (year | country), data = bal)
+
+## do not try to estimate the co-variance of the intercept and the slope per area.
+## instead, use two separate random terms, one for the intercept (1 | area.name)
+## and one for the slope (0 + year | area.name)
+## use the bobyqa optimizer to help convergence
+
+my.fit.iwi <- lmer(iwi ~ year + education + (1 | area.name) + (0 + year | area.name) +
+                       (year | top.level.region) + (year | country), data = bal,
+                  control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5)))
 
 ## z-transform by other scaling info from an existing data.frame
 z.transform.f <- function(value, varname, df){
@@ -270,7 +280,7 @@ pred_grid[, year := z.transform.f(year.of.interview, "year", bal)]
 
 # Predict scaled IWI
 pred_grid[, iwi_pred_scaled := predict(
-  my.fit,
+  my.fit.iwi,
   newdata = pred_grid,
 )]
 
@@ -283,10 +293,14 @@ pred_grid[, education := inverse.z.transform.f(education, "education", bal)]
 ## clean up
 pred_grid[, (c("year", "iwi_pred_scaled")) := NULL, ]
 
-alt.dt <- pred_grid[area.name == "24.Luanda.Viana.Viana Sede" & year.of.interview %in% my.dt[area.name == "24.Luanda.Viana.Viana Sede", year.of.interview], list(area.name, year.of.interview, predicted.iwi.lme4 = iwi_pred), ]
+@
 
-temp.f <- function(my.dt, alternative.dt, output = "table") {
-    foo <- my.dt[area.name == "24.Luanda.Viana.Viana Sede", ]
+<<iwi.0.5, results = "asis">>=
+temp.f.2 <- function(my.dt, pred_grid, output = "table", my.area, my.label = "foo") {
+
+    alternative.dt <- pred_grid[area.name == my.area & year.of.interview %in% my.dt[area.name == my.area, year.of.interview], list(area.name, year.of.interview, predicted.iwi.lme4 = iwi_pred), ]
+    
+    foo <- my.dt[area.name == my.area, ]
     foo[, area.name := NULL, ]
     foo[, in.the.cohort := (year.of.interview - age) > 1959 &
                      (year.of.interview - age) < 1977, ]
@@ -294,7 +308,7 @@ temp.f <- function(my.dt, alternative.dt, output = "table") {
     baz <- foo[in.the.cohort == TRUE, list(average.education = mean(education.in.years, na.rm = TRUE)), by = year.of.interview]
     bal <- merge(bar, baz)
     if(output == "table"){
-        print(xtable(bal, digits = c(0, 0, 1, 1), caption = "Average IWI in 24.Luanda.Viana.Viana Sede in Angola for the years of DHS observations. The education average is only based on persons born 1960-1976, while the IWI average is based on all persons in the DHS. IWI correlates with Eduacation average, but Education average in the population for this cohort should be almost invariant. Changes in education is thus a good measure of the sampling noise in the DHS. A simple regression that does not account for this sampling noise would fail to account for the fact that average education is particular low at the first measurement (year 2006) which also saw the lowest average IWI.", label = "tab:iwi1"), include.rownames = FALSE, booktabs = TRUE)
+        print(xtable(bal, digits = c(0, 0, 1, 1), caption = paste("Average IWI in", my.area, "for the years of DHS observations. The education average is only based on persons born 1960-1976, while the IWI average is based on all persons in the DHS. IWI correlates with Eduacation average, but Education average in the population for this cohort should be almost invariant. Changes in education is thus a good measure of the sampling noise in the DHS. A simple regression that does not account for this sampling noise would fail to account for the fact that average education is particular low at the first measurement (year 2006) which also saw the lowest average IWI."), label = my.label), include.rownames = FALSE, booktabs = TRUE)
     } else {
         my.fit <- lm(average.iwi ~ year.of.interview + average.education, data = bal)
         bal$predicted.iwi <- predict(my.fit, newdata = data.frame(average.education = rep(mean(bal$average.education), nrow(bal)), year.of.interview = bal$year.of.interview))
@@ -315,9 +329,10 @@ temp.f <- function(my.dt, alternative.dt, output = "table") {
     }
 }
 
-temp.f(my.dt, alt.dt, output = "table")
+temp.f.2(my.dt, pred_grid, output = "table", my.area = "24.Luanda.Viana.Viana Sede", my.label = "tab:iwi1")
+temp.f.2(my.dt, pred_grid, output = "table", my.area = "24.Luanda.Cacuaco.Funda", my.label = "tab:iwi2")
 
-@
+@ 
 
 The changes in education for this cohort should just be sampling noise, i.e. for years with higher values the sampled households happen to be a bit more wealthy (assuming higher education in general leads to slightly higher level of wealth), which leads to an overestimation of the true average IWI, and years with particularly low average education in the sampled members of the cohort, we assume the average IWI is underestimated.
 
@@ -341,21 +356,30 @@ y_{it} &= \beta_0 + \beta_1 \textrm{year}_{it} + \beta_2 \textrm{education}_{it}
        &\quad + \varepsilon_{it} \tag{C}
 \end{align}
 \noindent
-where the random terms are specified as:
+Model C includes random intercepts and random slopes for area, region, and country. For area, the covariance between the random intercept and random slope is constrained to zero. This is because we do not have enough data points to support a model that learns the relationship between the area intercept and the area slope; we only have enough data to fit an intercept and a slope for each area. To also answer the question: does the slope tend to be smaller when the intercept is high, is asking too much of the data.
+\[
+u_{0i} \sim \mathcal{N}(0,\sigma^2_{u0}), 
+\qquad
+u_{1i} \sim \mathcal{N}(0,\sigma^2_{u1}),
+\qquad
+\operatorname{Cov}(u_{0i},u_{1i}) = 0.
+\]
+While for region and country, the random intercepts and slopes are allowed to covary. 
 \begin{align*}
-(u_{0i}, u_{1i}) &\sim \mathcal{N}(0, \Sigma_{\textrm{area}}) \notag \\
+% (u_{0i}, u_{1i}) &\sim \mathcal{N}(0, \Sigma_{\textrm{area}}) \notag \\
 (v_{0r}, v_{1r}) &\sim \mathcal{N}(0, \Sigma_{\textrm{region}}) \notag \\
 (w_{0c}, w_{1c}) &\sim \mathcal{N}(0, \Sigma_{\textrm{country}}) \notag \\
   \varepsilon_{it} &\sim \mathcal{N}(0, \sigma^2)
 \end{align*}
 
-with correlated intercepts and slopes so that the variance-covariance matrices for the intercept and slope of area, region and country respectively are defined as
+
+% with correlated intercepts and slopes so that the variance-covariance matrices for the intercept and slope of area, region and country respectively are defined as follows (note that for area, the co-variance is set to zero).
 
 $
 \Sigma_{\text{area}} =
 \begin{pmatrix}
-\sigma^2_{u0} & \sigma_{u0,u1} \\
-\sigma_{u0,u1} & \sigma^2_{u1}
+\sigma^2_{u0} & 0 \\
+0 & \sigma^2_{u1}
 \end{pmatrix};
 \Sigma_{\text{region}} =
 \begin{pmatrix}
@@ -369,8 +393,30 @@ $
 \end{pmatrix}
 $
 
-<<iwi, fig.cap = "Different ways of estimating average IWI in one area. Lines A and B are only based on data in table \\ref{tab:iwi1}, while line C is based on hierarchical regression that takes the average IWI in the top region and the country into account.", dev = "png", dpi = 200, fig.width = 7, fig.height = 4.5>>=
-temp.f(my.dt, alt.dt, output = "figure")
+lme4 extends Wilkinson–Rogers formula notation by adding random-effects terms of the form (random-effect expression | grouping factor), including syntax for correlated and uncorrelated random intercepts and slopes, and in this notation the model reads:
+
+<<model.explicit, eval=FALSE, echo = TRUE>>=
+formula(iwi ~ year + education + (1 | area.name) + (0 + year | area.name) +
+                       (year | top.level.region) + (year | country))
+@
+
+In stata this would be achieved with the following code:
+
+<<model.explicit.stata, engine = "stata", eval=FALSE, echo = TRUE>>=
+mixed iwi year education ///
+    || country: year, covariance(unstructured) ///
+    || top_level_region: year, covariance(unstructured) ///
+    || area_name: year, covariance(independent) ///
+    reml
+@ 
+
+<<iwi, fig.cap = "Different ways of estimating average IWI in the area '24.Luanda.Viana.Viana Sede'. Lines A and B are only based on data in table \\ref{tab:iwi1}, while line C is based on hierarchical regression that takes the average IWI in the top region and the country into account.", dev = "png", dpi = 200, fig.width = 7, fig.height = 4.5>>=
+temp.f.2(my.dt, pred_grid, output = "figure", my.area = "24.Luanda.Viana.Viana Sede")
+@
+
+<<iwi-fig-area-2, fig.cap = "Different ways of estimating average IWI in the area '24.Luanda.Cacuaco.Funda'. Lines A and B are only based on data in table \\ref{tab:iwi2}, while line C is based on hierarchical regression that takes the average IWI in the top region and the country into account.", dev = "png", dpi = 200, fig.width = 7, fig.height = 4.5>>=
+my.dt.bak <- my.dt
+temp.f.2(my.dt, pred_grid, output = "figure", my.area = "24.Luanda.Cacuaco.Funda")
 @ 
 
 Considering again the area in Angola shown in Table \ref{tab:iwi1}, Figure \ref{fig:iwi} shows observed data together with predictions for each of the three models. The red, orange and green lines are all based on regression analysis: the red line represents a regression with a single independent variable, ``year.of.interview'', while the green line is based on both ``year.of.interview'', and ``education.in.years'' (see table \ref{tab:iwi1}). The orange line should in general be preferable since it uses the signal from not only this area but also other areas in the same top level region and in the same country. However, that signal will also shrink the differences between areas and predict values of IWI that make the areas appear more similar than they would have if the predictions for one area was completely independent of predictions for nearby areas. So, it comes with a price : stability is the gain, and decreased area differences is the price.
@@ -467,7 +513,7 @@ $$ w_{0c} \sim \mathcal{N}(0, \sigma_{\textrm{country}}^2) $$
 This is the code needed to fit this model to data with lmer in R.
 
 <<fit.model, echo = TRUE>>=
-my.fit <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + factor(year.of.interview) + (1 | country), data = my.dt)
+my.fit.deforestation <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + factor(year.of.interview) + (1 | country), data = my.dt)
 @
 
 When predicting, all variables need a value so the variable year was set to 2010. Figure \ref{fig:plot-model-1a} shows the predicted forest change for a given value with GNI, including uncertainty.
@@ -485,15 +531,16 @@ X_new <- cbind(
   `factor(year.of.interview)2015` = 0
 )
 
-beta <- fixef(my.fit)
+beta <- fixef(my.fit.deforestation)
 pred <- as.vector(X_new %*% beta)
-vcov_mat <- vcov(my.fit)
+vcov_mat <- vcov(my.fit.deforestation)
 
 se <- sqrt(diag(X_new %*% vcov_mat %*% t(X_new)))
 upper <- pred + 1.96 * se
 lower <- pred - 1.96 * se
 
 library(ggplot2)
+library(dplyr)
 
 plot.df <- data.frame(
   gdp.log = gdp_seq,
@@ -503,7 +550,7 @@ plot.df <- data.frame(
   GNI = exp(gdp_seq)
 )
 
-country.deviances <- as.data.frame(ranef(my.fit))[c("grp", "condval", "condsd")]
+country.deviances <- as.data.frame(ranef(my.fit.deforestation))[c("grp", "condval", "condsd")]
 colnames(country.deviances) <- c("country", "point.estimate.for.random.intercept", "sd.for.random.intercept")
 country.df <- merge(country.deviances, my.dt[year.of.interview == 2010, list(gdp.log = unique(gdp.log)), by = country])
 
