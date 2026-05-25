@@ -8,12 +8,29 @@
 \title{analyses for Paper III}
 \begin{document}
 
-\section{Problem description}
-The purpose of this document is to argue for way to solve this problem: the data about forest coverage is only available for every fifth year, but the observations on living conditions happen every now and then, seldom on those particular years that we have forest coverage data for.
+% \section{Problem description}
+% The purpose of this document is to argue for way to solve this problem: the data about forest coverage is only available for every fifth year, but the observations on living conditions happen every now and then, seldom on those particular years that we have forest coverage data for.
 
-We could interpolate one of them, or both. If we interpolate only forest coverage data we have a observations at years without any meaningful pattern, that might not be a problem in itself, or just a small problem. If we impute (arguably we can do better than just linear interpolation of local data in this case, since unlike the forest coverage data the living conditions data is always just sample data, the forest coverage data is the total population), living conditions ata we have data at every fifth year during the study period. The third option is to impute both types of data. This gives one measurement point every year during the study period.
+% We could interpolate one of them, or both. If we interpolate only forest coverage data we have a observations at years without any meaningful pattern, that might not be a problem in itself, or just a small problem. If we impute (arguably we can do better than just linear interpolation of local data in this case, since unlike the forest coverage data the living conditions data is always just sample data, the forest coverage data is the total population), living conditions ata we have data at every fifth year during the study period. The third option is to impute both types of data. This gives one measurement point every year during the study period.
 
-After some consideration, I'll decided to define the outcome as ``forest coverage change over the next 5 year'' to avoid having to interpolate forest change data. Living conditions data will be modelled (and hopefully more useful than the raw observed average).
+% After some consideration, I'll decided to define the outcome as ``forest coverage change over the next 5 year'' to avoid having to interpolate forest change data. Living conditions data will be modelled (and hopefully more useful than the raw observed average).
+
+\section{Matching point data from DHS with areas in the deforestation data}
+Based on geocoded deforestation data for every fifth year from year 2000 up to 2020, and geocoded data on living conditions based on the DHS, construct a data set that includes an area average for household wealth index (IWI), GNI, and the change in deforestation for the forthcoming five years. The plan is as follows.
+
+\begin{enumerate}
+\item Import a dataset produced by the package globallivingconditions, this dataset contains individual records with GIS coordinates.
+\item Discard unneeded columns from that dataset.
+\item Import the administrative boundaries produced by the package globallivingconditions. This is a sub set of the boundaries in the published forest change dataset, and it is most efficient to work with this subset directly.
+\item Use the unique GIS-coordinates from DHS to create a formal SpatialPoints object with the same CRS defintion as the set of boundaries
+\item Use a ``find the area into which this point falls'' GIS-function to classify all points into areas.
+\item Import the CSV version (non-geometric) version of the deforestation dataset.
+\item Discard the rows in that dataset that represent areas which has no DHS data point or has no deforestation data (a few lakes)
+\item Convert deforestation data from wide to long format
+\item Make improved estimates of average IWI per area, based on years of education for a constant cohort (see below). Only try to fit a straight line for the change of IWI over time per area, we have too few points for curve-linear fits per area. We include years as dummies to capture global economic trends, so the total change is not necessarily linear.
+\item Merge deforestation data for year $x$ with estimated livingconditions data for year $x-5$ by area names. This way we can use the living conditions estimates as an independent variable and deforestation data as dependent variable, since the (estimated) living conditions refer to the period \emph{before} the forest coverage data was recorded.
+\end{enumerate}
+
 
 \section{Forest change data}
 The original source only provides data for every fifth year, starting at year 2000. 
@@ -211,7 +228,7 @@ abline(h = 0, lty = 2)
 
 @ 
 
-\section{Improving average IWI estimates}
+\section{Modelling average IWI}
 The DHS data has some useful features at the individual level that can be used to reduce sampling introduces by the DHS (since they do not repeatedly measure the same individuals in an area), specifically we can use years of education for an invariant cohort as an instrument to get a more stable estimate of average IWI in an area. The idea is that by using an invariant cohort we detect differences between the samples and control for such differences. We want persons that are young enough to included when the last surveys are made (max 65 years old in 2024) and old enough to have finished their education when the first surveys were made (at least 25 years in 2000), which gives that they should be born between 1960 and 1976.
 
 Consider the area 24.Luanda.Viana.Viana Sede in Angola, from which we have five measurements (or four, depending on how you count since one survey was collected over two years, 2015 and 2016). In addition to the average IWI for each year, also calculate the average education for a cohort that is invariant over time.
@@ -432,23 +449,6 @@ my.dt[, year := year.of.interview + 1, ]
 
 @
 
-\section{Matching point data from DHS with areas in the deforestation data}
-
-The plan is as follows.
-
-\begin{enumerate}
-\item Import a dataset produced by the package globallivingconditions, this dataset contains individual records with GIS coordinates.
-\item Discard unneeded columns from that dataset.
-\item Import the administrative boundaries produced by the package globallivingconditions. This is a sub set of the boundaries in the published forest change dataset, and it is most efficient to work with this subset directly.
-\item Use the unique GIS-coordinates from DHS to create a formal SpatialPoints object with the same CRS defintion as the set of boundaries
-\item Use a ``find the area into which this point falls'' GIS-function to classify all points.
-\item Import the CSV version (non-geometric) version of the deforestation dataset.
-\item Discard the rows in that dataset that represent areas which has no DHS data point or has no deforestation data (a few lakes)
-\item Convert deforestation data from wide to long format
-\item Impute deforestation data for the intervening four year intervals without observations.
-\item Make improved estimates of IWI per area per observed year, based on years of education for a constant cohort (see below).
-\item Merge deforestation data for year $x$ with estimated livingconditions data for year $x-5$ by area names. This way we can later use the living conditions estimates as an independent variable and deforestation data as dependent variable, since the (estimated) living conditions refer to the period \emph{before} the forest coverage data was recorded.
-\end{enumerate}
 
 <<merge.data>>=
 library(data.table)
@@ -497,29 +497,26 @@ my.dt <- merge(my.dt, gni)
 
 @
 
-\section{Modelling}
+\section{Modelling deforestation}
 
-The first model to test is a simple model with only GNI as the focal variable, included as a linear and a squared term. We also include a dummy term for year, where year 2000 will be the reference level, so one dummy for each of 2005, 2010 and 2015.
+The first models to test are two simple models with only GNI as the focal variable, first included as a linear and a squared term, and, in the second model, also with a cubic term. We also include a dummy term for year, where year 2000 will be the reference level, so one dummy for each of 2005, 2010 and 2015.
 
 \begin{align}
   \text{forest\_coverage\_change}_{t+5} &= \beta_0 \text{GNI}_{t} + \beta_1 \text{GNI}_{t}^{2} \notag \\
                                         &\quad + \beta_2 \text{year}_{2005} + \beta_3 \text{year}_{2010} + \beta_4 \text{year}_{2015} \notag \\
-                                        &\quad + w_{0c(i)} + \varepsilon_{it} \tag{1}
+                                        &\quad + w_{0c(i)} + \varepsilon_{it} \tag{1} \\
+  \text{forest\_coverage\_change}_{t+5} &= \beta_0 \text{GNI}_{t} + \beta_1 \text{GNI}_{t}^{2} + \beta_2 \text{GNI}_{t}^{3} \notag \\
+                                        &\quad + \beta_3 \text{year}_{2005} + \beta_4 \text{year}_{2010} + \beta_5 \text{year}_{2015} \notag \\
+                                        &\quad + w_{0c(i)} + \varepsilon_{it} \tag{2}
 \end{align}
 \noindent
 where the random term (the intercept for country) is specified as:
 
 $$ w_{0c} \sim \mathcal{N}(0, \sigma_{\textrm{country}}^2) $$
 
-This is the code needed to fit this model to data with lmer in R.
+% When predicting, all variables need a value so the variable year was set to 2010. Figure \ref{fig:plot-model-1a} shows the predicted forest change for a given value with GNI, including uncertainty.
 
-<<fit.model, echo = TRUE>>=
-my.fit.deforestation <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + factor(year.of.interview) + (1 | country), data = my.dt)
-@
-
-When predicting, all variables need a value so the variable year was set to 2010. Figure \ref{fig:plot-model-1a} shows the predicted forest change for a given value with GNI, including uncertainty.
-
-<<plot-model-1a, fig.cap = "Forest cover change as a function of GNI.", fig.width = 3, fig.height = 2.5, fig.align = "center">>=
+<<plot-model-1a, fig.cap = "Forest cover change as a function of GNI.", fig.width = 5, fig.height = 3, fig.align = "center", eval = FALSE>>=
 gdp_seq <- seq(min(my.dt$gdp.log), max(my.dt$gdp.log), length.out = 100)
 
 # Manually construct model matrix
@@ -584,9 +581,9 @@ ggplot(plot.df, aes(x = GNI, y = pred)) +
         )
 
 @
-Figure \vref{fig:plot-model-1b} adds the predicted forest change for all countries in the study, including uncertainty.
+% Figure \vref{fig:plot-model-1b} adds the predicted forest change for all countries in the study, including uncertainty.
 
-<<plot-model-1b, fig.cap = "Forest cover change as a function of GNI with estimated country averages.", fig.width = 3, fig.height = 5, fig.align = "center">>=
+<<plot-model-1b, fig.cap = "Forest cover change as a function of GNI with estimated country averages.", fig.width = 3, fig.height = 5, fig.align = "center", eval=FALSE>>=
 library(ggplot2)
 
 ggplot(plot.df, aes(x = GNI, y = pred)) +
@@ -616,6 +613,78 @@ ggplot(plot.df, aes(x = GNI, y = pred)) +
         axis.text.x = element_text(size = 7),
         axis.title.x = element_text(size = 8)
         )
+
+@
+
+<<kuznet-0>>=
+my.dt[, year := factor(year.of.interview), ]
+my.formula.1 <- formula(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country))
+my.formula.2 <- formula(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country))
+@
+
+This is the code needed to fit the first model to data with lmer in R.
+
+<<show.formula.1, echo = TRUE>>=
+formula(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country))
+@
+
+And here is the code for the second model:
+
+<<show.formula.2, echo = TRUE>>=
+formula(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country))
+@
+
+<<kuznet-1-effects, fig.cap = "Forest cover change as a function of GNI, including a quadratic term for GNI.", fig.width = 5, fig.height = 3, fig.align = "center">>=
+library(lattice); library(latticeExtra)
+library(effects)
+library(lme4)
+
+my.fit.deforestation.2 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt)
+
+## Set the range of GDP values we want visualised explicitly, Effect() will not by default restrict it enough.
+gdp_range <- range(my.dt$gdp.log, na.rm = TRUE)
+my.eff <- Effect("gdp.log", my.fit.deforestation.2,
+                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
+
+## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
+x_ticks <- c(1000, 2000, 4000, 8000, 12000)
+p <- plot(my.eff,
+          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
+                      y = list(cex = 0.5)),
+          main = "", ylim = c(-1.95, 1.75))
+p <- update(p,
+            xlab = list(label="GNI", cex = 0.8),
+            ylab = list(label="Predicted forestation change", cex = 0.8),
+            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
+p + 
+    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
+
+@
+
+<<kuznet-3-effects, fig.cap = "Forest cover change as a function of GNI, including a linear, quadratic and a cubic term.", fig.width = 5, fig.height = 3, fig.align = "center">>=
+my.fit.deforestation.3 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt)
+
+## Set the range of GDP values we want visualised explicitly, Effect() will not by default restrict it enough.
+gdp_range <- range(my.dt$gdp.log, na.rm = TRUE)
+my.eff <- Effect("gdp.log", my.fit.deforestation.3,
+                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
+
+## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
+x_ticks <- c(1000, 2000, 4000, 8000, 12000)
+p <- plot(my.eff,
+          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
+                      y = list(cex = 0.5)),
+          main = "", ylim = c(-1.95, 1.75))
+p <- update(p,
+            xlab = list(label="GNI", cex = 0.8),
+            ylab = list(label="Predicted forestation change", cex = 0.8),
+            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
+p + 
+    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
 
 @
 
