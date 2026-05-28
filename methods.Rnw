@@ -1,0 +1,140 @@
+%% Requirements:
+%% '/home/hans/annex/undervisning/SC1118/Introduktion till Regressionsanalys - bildspel.pdf'
+%% '/home/hans/annex/undervisning/SC1118/nf.pdf'
+%% '/home/hans/annex/undervisning/SC1118/nf.png'
+%% '/home/hans/annex/undervisning/SC1118/500px-Rensis_Likert_-_ISR_-_December_1961.jpg'
+%% '/home/hans/annex/undervisning/SC1118/The_managed_heart.jpg'
+%% '/home/hans/annex/undervisning/SC1118/nominal.png'
+%% '/home/hans/annex/undervisning/SC1118/nominal-2.png'
+%% '/home/hans/annex/undervisning/SC1111/livränta.png'
+%% '/home/hans/annex/undervisning/PV1322/Data-material/rekryteringsstudie-listor.pdf'
+%% '/home/hans/annex/undervisning/PV1322/Data-material/rekryteringsstudie-scb-tabeller.pdf'
+
+\documentclass[aspectratio=169,xcolor=table,english]{beamer}
+% \documentclass[xcolor=table,swedish]{beamer}
+\usefonttheme{professionalfonts}
+%% \usepackage{tikz}
+\usepackage[english]{babel}
+\usepackage{IEEEtrantools} % proper indentation for multi-line equations
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{varioref}
+\usepackage{hyperref}
+\usepackage{rotating}
+\usepackage{graphicx}
+\setbeamertemplate{navigation symbols}{}
+\usepackage{colortbl}
+\usepackage{natbib}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{pdfpages}
+
+\usepackage{animate} %% supports autoplay, but does not supports gif. For the regression intro.
+% Link colors
+\definecolor{linkcol}{HTML}{1155CC} % blå
+% hyperref already loaded by beamer, use hypersetup{} to configure it.
+\hypersetup{
+  colorlinks=true,
+  urlcolor=linkcol
+}
+
+\usepackage{tikz}
+\usetikzlibrary{overlay-beamer-styles}
+\usepackage[absolute,overlay]{textpos}
+
+\newenvironment{changemargin}[2]{%
+\begin{list}{}{%
+\setlength{\topsep}{0pt}%
+\setlength{\leftmargin}{#1}%
+\setlength{\rightmargin}{#2}%
+\setlength{\listparindent}{\parindent}%
+\setlength{\itemindent}{\parindent}%
+\setlength{\parsep}{\parskip}%
+}%
+\item[]}{\end{list}}
+
+\begin{document}
+
+<<methods-setup, echo=FALSE, warning=FALSE, message=FALSE>>=
+opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE, message=FALSE, fig.width=4, fig.height=3, dev="tikz", opts_knit$set(root.dir = "."))
+knit_hooks$set(crop=hook_pdfcrop)
+@
+
+\begin{frame}
+  \frametitle{Data: sources and preparations}
+  \begin{itemize}
+  \item Sources we have used so far
+  \item The datasets we have constructed so far
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Data sources used so far}
+  \begin{table}[htb]
+    \centering
+    {
+    \renewcommand{\arraystretch}{1.6} % increase row spacing
+    \begin{tabular}[htb]{p{4cm}p{5cm}p{5cm}}
+      Data source & Level & Content \\
+      \midrule 
+      Demographic and Health Surveys (DHS) & Individual, clustered to a single point in the local area & Data on living conditions \\
+      World Bank & Country & Gross National Income \\
+      Potapov et al. 2022 & Patches of land, $30 \times 30m^2$ & Land use \\
+      GADM & Administrative divisions & Geometric boundaries \\
+      \bottomrule
+    \end{tabular}
+    }
+    \caption{Level, content and data source used.}
+    \label{tab:sources}
+  \end{table}
+\end{frame}
+
+\begin{frame}
+  \frametitle{What we started out using, but decided against}
+  \includegraphics[scale=0.1]{Hansen}
+\end{frame}
+
+\begin{frame}
+  \frametitle{What we actually use}
+  \includegraphics[scale=0.1]{Potapov}  
+\end{frame}
+
+\begin{frame}
+  \frametitle{Administrative divisions, based on GADM, adopted for the DHS}
+  \includegraphics[scale=0.1]{divisions}  
+\end{frame}
+
+\begin{frame}{Understanding the deforestation data source}
+\begin{columns}[T,onlytextwidth]
+  \begin{column}{0.5\textwidth}
+  \includegraphics[scale=0.1]{understanding_the_source}
+  \end{column}
+  \begin{column}{0.5\textwidth}
+    The numbers in the cells are codes the encode the classification of the cell. Codes 27-48 and 127-148 represent forest. \emph{Forest} is defined as ``area covered by organic structures (trees) that reflects sunlight at least 5 meters above the ground.''. \emph{Average forest coverage} is the number of forest cells divided by the total number of valid cells (excluding lakes etc) in the area.
+  \end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{The initial state of forest coverage}
+  \includegraphics[scale=0.1]{initial-state}  
+\end{frame}
+
+\begin{frame}
+  \frametitle{Data is aggregated to administrative regions}
+\begin{columns}[T,onlytextwidth]
+  \begin{column}{0.75\textwidth}
+  \includegraphics[scale=0.2]{initial-state-zoom}  
+  \end{column}
+  \begin{column}{0.25\textwidth}
+    Note that each administrative region only has a \emph{single} color, representing the \emph{average} forest coverage.
+  \end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}
+  \includegraphics[scale=0.12]{current-state}  
+\end{frame}
+
+
+\end{document}
