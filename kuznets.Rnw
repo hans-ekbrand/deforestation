@@ -688,42 +688,82 @@ p +
 
 @
 
-Up to now, we have defined "forest coverage change" in relation to the forest coverage in $t_{0}$. Given that we impute a linear development of wealth over time per area, ignoring the changes in forestation cover after $t_{0}$ but before $t_{i}$ is reasonable, but let us at least be clear with what this means. Consider table \ref{tab:def1}, and pay attention to row 3 and 4, which concerns the living conditions in 2010 and the forthcoming forest coverage change up to 2015 (row 3) and the living conditions in 2015 and the forthcoming forest coverage change up to 2020 (row 4). The $y$-value to predict using the living conditions from 2015 is negative, because the cummulative forest coverage change since t0 is negative (-0.87). However, the forest coverage increased between 2015 and 2020, and if we want to model that change, rather than the cummulative change, we should use data as displayed in table \ref{tab:def2}, which also show the absolute forestation coverage statistic.
-
-<<fcc.def, echo = FALSE, results = "asis">>=
+<<fcc.def, echo = FALSE, results = "asis", eval=TRUE>>=
+library(data.table)
 setkey(my.dt, area.name)
 ## import state at t0 again
 deforestation.dt <- data.table(read.csv("forest_change.csv"))
 initial.state.dt <- deforestation.dt[, list(area.name = region, FC_init = forestation_2000), ]
-my.dt <- merge(my.dt, initial.state.dt)
+my.dt.full <- merge(my.dt, initial.state.dt)
 
-setorder(my.dt, area.name, forestation_change_year)
-my.dt[, forestation_change_prev :=
-        forestation_change - shift(forestation_change),
-      by = area.name]
-my.dt[is.na(forestation_change_prev),
-      forestation_change_prev := forestation_change]
-my.dt[, Coverage := FC_init + forestation_change, ]
+setorder(my.dt.full, area.name, year.of.interview)
 
-sample.1 <- my.dt[area.name == "716.Midlands.Kwekwe", list(year.of.interview, forestation_change_year, forestation_change, iwi, gdp.log)]
-colnames(sample.1) <- c("Y.I", "Y.FC", "FC", "IWI", "GPD.log")
+my.dt.full[
+  ,
+  forestation_state_at_end := FC_init + forestation_change
+]
 
-sample.2 <- my.dt[area.name == "716.Midlands.Kwekwe", list(FC_t0 = Coverage, year.of.interview, forestation_change_year, forestation_change_prev, iwi, gdp.log)]
-colnames(sample.2) <- c("Abs.Cov", "Y.I", "Y.FC", "FC", "IWI", "GPD.log")
+my.dt.full[
+  ,
+  current_state := data.table::shift(forestation_state_at_end, fill = first(FC_init)),
+  by = area.name
+]
 
-library(xtable)
-print(xtable(sample.1, caption = "The data points for a single area in the merged dataset. 'FC' = 'Forest coverage Change in relation to year 2000' is -1.00 in year 2015, but in 2020 the forest coverage had increased to -0.87. If we define forest cover change in relation to the existing state, rather than the state in year 2000, the FC value for row 4 should be positive instead of negative.", label = "tab:def1"), booktabs = TRUE)
+my.dt.full[
+  ,
+  forestation_change_abs := forestation_state_at_end - current_state
+]
 
-print(xtable(sample.2, caption = "The data points for a single area in the merged dataset focussing on the intra period changes. 'FC' = 'Forest coverage Change in relation to the previous measurement' in 2020 is now positive. 15.85 is more than 15.72, and we do not care about the state at t0.", label = "tab:def2"), booktabs = TRUE)
+my.dt.full[
+  ,
+  forestation_change := forestation_change_abs
+]
+
+my.dt.clean <- my.dt.full[, list(country, top.level.region, area.name, year = year.of.interview, iwi, gdp.log, forest_coverage = current_state, forestation_change), ]
+
+## sample.2 <- my.dt.clean[top.level.region == "Zimbabwe.Midlands", ]
+## colnames(sample.2) <- c("Country", "Top level Region", "Area name", "year", "IWI", "GNI.log", "FC", "FCC")
+
+## library(xtable)
+## print(xtable(sample.2, caption = "The data points for a top level region in the merged dataset. 'FC' = 'Forest Coverage'; 'FCC' = 'Forest Coverage Change'.", label = "tab:def1"), booktabs = TRUE)
 
 @
+
+
+% latex table generated in R 4.5.1 by xtable 1.8-4 package
+% Fri May 29 00:48:35 2026
+\begin{table}[ht]
+  \centering
+\resizebox{\textwidth}{!}{%  
+\begin{tabular}{rlllrrrrr}
+  \toprule
+ & Country & Top level Region & Area name & year & IWI & GNI.log & FC & FCC \\ 
+  \midrule
+1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & -0.17 \\ 
+  2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.48 \\ 
+  3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & 0.28 \\ 
+  4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.02 \\ 
+  5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & -0.56 \\ 
+  6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.24 \\ 
+  7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.43 \\ 
+  8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -0.10 \\ 
+  9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & -0.39 \\ 
+  10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.38 \\ 
+  11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2010 & 23.16 & 7.41 & 15.17 & -0.60 \\ 
+  12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2015 & 26.49 & 7.62 & 14.58 & -0.38 \\ 
+   \bottomrule
+\end{tabular}
+}
+\caption{Some data points for areas in a top level region in the merged dataset. 'FC' = 'Forest Coverage'; 'FCC' = 'Forest Coverage Change'.} 
+\label{tab:def1}
+\end{table}
 
 Using the forest coverage change defined in relation to the previous measurement rather than at $t_{0}$ we get the following predictions (in this case the quadratic model was no worse than the model with a qubic term, so the following is based on a model with only a linear and a quadratic term for GNI).
 
 
-<<kuznet-4-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state, not the state at t0.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.4 <- lmer(forestation_change_prev ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt)
-my.fit.deforestation.5 <- lmer(forestation_change_prev ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt)
+<<kuznet-4b-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state, not the state at t0.", fig.width = 5, fig.height = 3, fig.align = "center">>=
+my.fit.deforestation.4 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.5 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt.clean)
 my.eff <- Effect("gdp.log", my.fit.deforestation.4,
                  xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
 ## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
@@ -746,13 +786,8 @@ p +
 Now, include the forest coverage at time $t$ as a control.
 
 <<kuznet-5-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state. Including control for forest coverage at time $t$.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-setorder(my.dt, area.name, forestation_change_year)
-my.dt[, Coverage_prev := shift(Coverage), by = area.name]
-my.dt[is.na(Coverage_prev), Coverage_prev := FC_init, ]
-## drop Coverage
-my.dt[, Coverage := NULL, ]
-
-my.fit.deforestation.6 <- lmer(forestation_change_prev ~ Coverage_prev + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt)
+library(lme4)
+my.fit.deforestation.6 <- lmer(forestation_change ~ forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
 
 my.eff <- Effect("gdp.log", my.fit.deforestation.6,
                  xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
@@ -772,6 +807,29 @@ p +
     layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
 
 @
+
+<<kuznet-7-effects, fig.cap = "Predicted forest cover change the next five years ($t+5$) as a function of GNI, including a linear and a quadratic term; average IWI; control for forest coverage at time $t$ and a random intercept term for country and a random intercept term for the top level region.", fig.width = 5, fig.height = 3, fig.align = "center">>=
+my.fit.deforestation.7 <- lmer(forestation_change ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.7b <- lmer(forestation_change ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country) + (1 | top.level.region), data = my.dt.clean)
+
+my.eff <- Effect("gdp.log", my.fit.deforestation.7b,
+                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
+## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
+x_ticks <- c(1000, 2000, 4000, 8000, 12000)
+p <- plot(my.eff,
+          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
+                      y = list(cex = 0.5)),
+          main = "", ylim = c(-0.7, 0.3))
+p <- update(p,
+            xlab = list(label="GNI", cex = 0.8),
+            ylab = list(label="Predicted forestation change", cex = 0.8),
+            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
+p + 
+    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
+
+@ 
 
 \clearpage
 

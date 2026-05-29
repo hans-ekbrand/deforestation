@@ -42,6 +42,8 @@
 \usetikzlibrary{overlay-beamer-styles}
 \usepackage[absolute,overlay]{textpos}
 
+\usepackage[export]{adjustbox}
+
 \newenvironment{changemargin}[2]{%
 \begin{list}{}{%
 \setlength{\topsep}{0pt}%
@@ -101,7 +103,9 @@ knit_hooks$set(crop=hook_pdfcrop)
 
 \begin{frame}
   \frametitle{Administrative divisions, based on GADM, adopted for the DHS}
-  \includegraphics[scale=0.1]{divisions}  
+  \vspace{-1.0cm}
+  \includegraphics[scale=0.1]{divisions} \\
+  Some administrative divisions have been merged to get more areas with 3 data points from different DHS waves after 2000. Not all countries have DHS data, e.g. Brazil.
 \end{frame}
 
 \begin{frame}{Understanding the deforestation data source}
@@ -135,6 +139,93 @@ knit_hooks$set(crop=hook_pdfcrop)
 \begin{frame}
   \includegraphics[scale=0.12]{current-state}  
 \end{frame}
+
+\begin{frame}
+  \frametitle{Public disemination of our first dataset}
+  ``Forest cover and change in low- and middle-income countries aggregated to administrative areas (2000–2020)'' \href{https://zenodo.org/records/19221532}{https://doi.org/10.5281/zenodo.19221532}. \\
+
+  \vspace{0.5cm}
+
+  \begin{quote}
+    A dataset of forest cover and forest cover change for 2000–2020 in low- and middle-income countries, constructed by aggregating high-resolution satellite-derived land cover data to 35502 subnational administrative areas. These spatial units are socially and politically meaningful and designed to be compatible with geocoded household survey data from the Demographic and Health Surveys (DHS), while also supporting integration with other datasets.
+
+The dataset includes baseline forest cover in 2000 and changes in forest cover at five-year intervals up to 2020. By eliminating the need for spatial data processing, it enables researchers to analyse deforestation and forest gain using standard statistical tools.
+  \end{quote}
+\end{frame}
+
+\newcommand{\fullframeimage}[1]{%
+  \begin{frame}[plain]
+    \begin{tikzpicture}[remember picture,overlay]
+      \node at (current page.center) {%
+        \includegraphics[
+          max size={\paperwidth}{\paperheight},
+          keepaspectratio
+        ]{#1}%
+      };
+    \end{tikzpicture}
+  \end{frame}
+}
+
+\fullframeimage{zenodo}
+
+\begin{frame}
+  \frametitle{Features and limitations of the first dataset}
+  \begin{itemize}
+  \item It is adjusted to use with geocoded DHS data via the customised administrative divisions. Our R package \href{https://bitbucket.org/hansekbrand/dhsharmonisation/src/master/}{globallivingconditions} connects DHS data to these administrative divisions.
+  \item It is available in two versions: with and without geometry data.
+  \item The first published dataset only has data about forest coverage, no data about living conditions.
+  \item It only contains data about changes in forest coverage, not changes in land use in general.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Our second dataset: linking DHS data to deforestation data}
+  \begin{itemize}
+  \item Based on geocoded deforestation data for every fifth year from year 2000 up to 2020, and geocoded data on living conditions based on the DHS, construct a data set that includes an area average for household wealth index (IWI), GNI, and the change in forest coverage for the forthcoming five years.
+  \item DHS is dated irregularly.
+  \item Aggregating DHS measurements from different points in an area creates sampling noise.
+  \item DHS adds a random offset to the coordinates, so some points end up in the wrong area.
+  \item We estimate a trend of IWI development over time for all areas, and include the education of a fixed cohort to reduce sampling noise and improve the estimate.
+  \end{itemize}
+\end{frame}
+
+\fullframeimage{impute-based-on-education}
+
+\fullframeimage{impute-based-on-education-2}
+
+\begin{frame}
+\frametitle{Structure of the second data set (current version)}
+% latex table generated in R 4.5.1 by xtable 1.8-4 package
+% Fri May 29 00:48:35 2026
+\begin{table}[ht]
+  \centering
+\resizebox{\textwidth}{!}{%  
+\begin{tabular}{rlllrrrrr}
+  \toprule
+ & Country & Top level Region & Area name & year & IWI & GNI.log & FC & FCC \\ 
+  \midrule
+1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & -0.17 \\ 
+  2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.48 \\ 
+  3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & 0.28 \\ 
+  4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.02 \\ 
+  5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & -0.56 \\ 
+  6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.24 \\ 
+  7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.43 \\ 
+  8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -0.10 \\ 
+  9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & -0.39 \\ 
+  10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.38 \\ 
+  11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2010 & 23.16 & 7.41 & 15.17 & -0.60 \\ 
+  12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2015 & 26.49 & 7.62 & 14.58 & -0.38 \\ 
+   \bottomrule
+\end{tabular}
+}
+\caption{Some data points for areas in a top level region in the merged dataset. 'FC' = 'Forest Coverage'; 'FCC' = 'Forest Coverage Change'. Note that the data is lagged, FCC is at $t+5$.} 
+\label{tab:def1}
+\end{table}
+
+\end{frame}
+
+\fullframeimage{kuznets.png}
 
 
 \end{document}
