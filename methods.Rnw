@@ -81,6 +81,7 @@ knit_hooks$set(crop=hook_pdfcrop)
       \midrule 
       Demographic and Health Surveys (DHS) & Individual, clustered to a single point in the local area & Data on living conditions \\
       World Bank & Country & Gross National Income \\
+      Global Data Lab & Top level region & Gross National Income for Indian states \\
       Potapov et al. 2022 & Patches of land, $30 \times 30m^2$ & Land use \\
       GADM & Administrative divisions & Geometric boundaries \\
       \bottomrule
