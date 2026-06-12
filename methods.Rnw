@@ -1,15 +1,3 @@
-%% Requirements:
-%% '/home/hans/annex/undervisning/SC1118/Introduktion till Regressionsanalys - bildspel.pdf'
-%% '/home/hans/annex/undervisning/SC1118/nf.pdf'
-%% '/home/hans/annex/undervisning/SC1118/nf.png'
-%% '/home/hans/annex/undervisning/SC1118/500px-Rensis_Likert_-_ISR_-_December_1961.jpg'
-%% '/home/hans/annex/undervisning/SC1118/The_managed_heart.jpg'
-%% '/home/hans/annex/undervisning/SC1118/nominal.png'
-%% '/home/hans/annex/undervisning/SC1118/nominal-2.png'
-%% '/home/hans/annex/undervisning/SC1111/livränta.png'
-%% '/home/hans/annex/undervisning/PV1322/Data-material/rekryteringsstudie-listor.pdf'
-%% '/home/hans/annex/undervisning/PV1322/Data-material/rekryteringsstudie-scb-tabeller.pdf'
-
 \documentclass[aspectratio=169,xcolor=table,english]{beamer}
 % \documentclass[xcolor=table,swedish]{beamer}
 \usefonttheme{professionalfonts}
