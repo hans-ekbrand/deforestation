@@ -803,8 +803,8 @@ Using the forest coverage change defined in relation to the previous measurement
 
 
 <<kuznet-4b-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state, not the state at t0.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.4 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
-my.fit.deforestation.5 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.4 <- lmer(forestation_change_5yr_forward ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.5 <- lmer(forestation_change_5yr_forward ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt.clean)
 my.eff <- Effect("gdp.log", my.fit.deforestation.4,
                  xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
 ## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
@@ -828,7 +828,7 @@ Now, include the forest coverage at time $t$ as a control.
 
 <<kuznet-5-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state. Including control for forest coverage at time $t$.", fig.width = 5, fig.height = 3, fig.align = "center">>=
 library(lme4)
-my.fit.deforestation.6 <- lmer(forestation_change ~ forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.6 <- lmer(forestation_change_5yr_forward ~ forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
 
 my.eff <- Effect("gdp.log", my.fit.deforestation.6,
                  xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
@@ -850,8 +850,8 @@ p +
 @
 
 <<kuznet-7-effects, fig.cap = "Predicted forest cover change the next five years ($t+5$) as a function of GNI, including a linear and a quadratic term; average IWI; control for forest coverage at time $t$ and a random intercept term for country and a random intercept term for the top level region.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.7 <- lmer(forestation_change ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
-my.fit.deforestation.7b <- lmer(forestation_change ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country) + (1 | top.level.region), data = my.dt.clean)
+my.fit.deforestation.7 <- lmer(forestation_change_5yr_forward ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.7b <- lmer(forestation_change_5yr_forward ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country) + (1 | top.level.region), data = my.dt.clean)
 
 my.eff <- Effect("gdp.log", my.fit.deforestation.7b,
                  xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
