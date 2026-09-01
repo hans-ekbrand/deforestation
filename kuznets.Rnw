@@ -803,7 +803,7 @@ Using the forest coverage change defined in relation to the previous measurement
 
 
 <<kuznet-4b-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state, not the state at t0.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.4 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my..dt.clean)
+my.fit.deforestation.4 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
 my.fit.deforestation.5 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt.clean)
 my.eff <- Effect("gdp.log", my.fit.deforestation.4,
                  xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
