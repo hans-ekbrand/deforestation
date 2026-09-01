@@ -6,9 +6,9 @@ This document produces three summary variables of forestry-related export per co
 For each country and year we create three summary measures - from the most to the least inclusive these are.
 
 \begin{itemize}
-\item export_value_broad
-\item export_value_intermediate
-\item export_value_narrow
+\item export\_value\_broad
+\item export\_value\_intermediate
+\item export\_value\_narrow
 \end{itemize}
 
 where ``broad'' indicates that even goods that might have been produced by \emph{imported} forestry products was used, e.g. paper and wood panels etc. ``Narrow'' only includes ``Roundwood'', while ``Intermediate'' also include ``Wood chips, particles and residues''.
