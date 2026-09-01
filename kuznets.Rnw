@@ -63,7 +63,8 @@ my.dt <- readRDS("final.RDS")
 
 keep.these <- c("country.code.ISO.3166.alpha.3", "indian.states.as.countries",
                 "year.of.interview", "ClusterID", "iwi", "education.in.years",
-                "age", "lon", "lat", "wbgi_gee", "wdi_gnicapatlcur")
+                "age", "lon", "lat", "wbgi_gee", "wdi_gnicapatlcur", "rural",
+                "owns.land", "hectares.of.land", "owns.livestock")
 remove.these <- setdiff(colnames(my.dt), keep.these)
 my.dt[, (remove.these) := NULL]
 gc(verbose = FALSE)
@@ -441,7 +442,7 @@ temp.f.2(my.dt, pred_grid, output = "figure", my.area = "24.Luanda.Cacuaco.Funda
 
 Considering again the area in Angola shown in Table \ref{tab:iwi1}, Figure \ref{fig:iwi} shows observed data together with predictions for each of the three models. The red, orange and green lines are all based on regression analysis: the red line represents a regression with a single independent variable, ``year.of.interview'', while the green line is based on both ``year.of.interview'', and ``education.in.years'' (see table \ref{tab:iwi1}). The orange line should in general be preferable since it uses the signal from not only this area but also other areas in the same top level region and in the same country. However, that signal will also shrink the differences between areas and predict values of IWI that make the areas appear more similar than they would have if the predictions for one area was completely independent of predictions for nearby areas. So, it comes with a price : stability is the gain, and decreased area differences is the price.
 
-\texttt{pred_grid} is the full object, now create \texttt{living.conditions.dt} with only \texttt{area.name}, \texttt{country}, \texttt{top level region}, \texttt{year of interview} and the \texttt{predicted average IWI value}, thus droping the variable average education in years variable.
+\texttt{pred\_grid} is the full object, now create \texttt{living.conditions.dt} with only \texttt{area.name}, \texttt{country}, \texttt{top level region}, \texttt{year of interview} and the \texttt{predicted average IWI value}, thus droping the variable average education in years variable.
 
 <<merge.data>>=
 library(data.table)
