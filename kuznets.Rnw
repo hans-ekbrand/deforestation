@@ -796,8 +796,9 @@ Adding Trade data from the FAO
 @
 
 <<add.fao.data>>=
+library(data.table)
 setkey(my.clean.dt, country.code, year)
-
+fao.dt <- merge(my.clean.dt, exports)
 @ 
 
 Using the forest coverage change defined in relation to the previous measurement rather than at $t_{0}$ we get the following predictions (in this case the quadratic model was no worse than the model with a qubic term, so the following is based on a model with only a linear and a quadratic term for GNI).
