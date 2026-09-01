@@ -706,7 +706,7 @@ my.dt.full[
 
 my.dt.full[
   order(area.name, year.of.interview),
-  forestation_change_5yr_forward := shift(forestation_state, type = "lead") - forestation_state,
+  forestation_change_5yr_forward := data.table::shift(forestation_state, type = "lead") - forestation_state,
   by = area.name
 ]
 
@@ -715,7 +715,7 @@ my.dt.clean <- my.dt.full[, list(country, top.level.region, area.name, year = ye
 my.dt.clean[
   order(area.name, year),
   forestation_change_5yr_backward :=
-    forest_coverage - shift(forest_coverage, type = "lag"),
+    forest_coverage - data.table::shift(forest_coverage, type = "lag"),
   by = area.name
 ]
 
@@ -734,28 +734,28 @@ print(xtable(sample.2, caption = "The data points for a top level region in the 
 
 % latex table generated in R 4.5.1 by xtable 1.8-8 package
 % Tue Sep  1 12:52:54 2026
-\begin{table}[ht]
-\centering
-\begin{tabular}{rlllrrrrrr}
-  \toprule
- & country & top.level.region & area.name & year & iwi & gdp.log & forest\_coverage & cummulative\_forestation\_change & forestation\_change\_5yr\_forward \\ 
-  \midrule
-1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & 0.00 & -0.17 \\ 
-  2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.17 & -0.48 \\ 
-  3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & -0.65 & 0.28 \\ 
-  4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.37 & -0.02 \\ 
-  5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2020 & 31.23 & 7.57 & 7.82 & -0.39 &  \\ 
-  6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & 0.00 & -0.56 \\ 
-  7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.56 & -0.24 \\ 
-  8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.80 & -0.43 \\ 
-  9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -1.23 & -0.10 \\ 
-  10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2020 & 25.67 & 7.57 & 18.19 & -1.34 &  \\ 
-  11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & 0.00 & -0.39 \\ 
-  12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.39 & -0.38 \\ 
-   \bottomrule
-\end{tabular}
-\caption{The data points for a top level region in the merged dataset. 'IWI', predicted average IWI based on observed IWI and education in years for a common cohort'; 'FC' = 'Forest Coverage'; 'cum.FCC' = 'Cummulative Forest Coverage Change'; 'F5YFCC' = 'Forward-looking 5 years Forest Coverage Change, ie, the FCC for the coming 5 years after this year. Not Available for the last observation in each area}
-\end{table}
+% \begin{table}[ht]
+% \centering
+% \begin{tabular}{rlllrrrrrr}
+%   \toprule
+%  & country & top.level.region & area.name & year & iwi & gdp.log & forest\_coverage & cummulative\_forestation\_change & forestation\_change\_5yr\_forward \\ 
+%   \midrule
+% 1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & 0.00 & -0.17 \\ 
+%   2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.17 & -0.48 \\ 
+%   3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & -0.65 & 0.28 \\ 
+%   4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.37 & -0.02 \\ 
+%   5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2020 & 31.23 & 7.57 & 7.82 & -0.39 &  \\ 
+%   6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & 0.00 & -0.56 \\ 
+%   7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.56 & -0.24 \\ 
+%   8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.80 & -0.43 \\ 
+%   9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -1.23 & -0.10 \\ 
+%   10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2020 & 25.67 & 7.57 & 18.19 & -1.34 &  \\ 
+%   11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & 0.00 & -0.39 \\ 
+%   12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.39 & -0.38 \\ 
+%    \bottomrule
+% \end{tabular}
+% \caption{The data points for a top level region in the merged dataset. 'IWI', predicted average IWI based on observed IWI and education in years for a common cohort'; 'FC' = 'Forest Coverage'; 'cum.FCC' = 'Cummulative Forest Coverage Change'; 'F5YFCC' = 'Forward-looking 5 years Forest Coverage Change, ie, the FCC for the coming 5 years after this year. Not Available for the last observation in each area}
+% \end{table}
 
 % % latex table generated in R 4.5.1 by xtable 1.8-4 package
 % % Fri May 29 00:48:35 2026
@@ -790,7 +790,7 @@ print(xtable(sample.2, caption = "The data points for a top level region in the 
 %% "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
 %% output: a data.table object called export with three variables per country and year
 
-<<import.and.wash.fao, child="~/src/deforestation/FAO.Rnw">>=
+<<import.and.wash.fao, child="/home/hans/src/deforestation/FAO.Rnw">>=
 @
 
 <<add.fao.data>>=
