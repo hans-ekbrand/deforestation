@@ -1,0 +1,110 @@
+This document produces three summary variables of forestry-related export per country and years, based on FAO statistics provided in
+
+FAOSTAT\_data\_2011-2024.csv and FAOSTAT\_data\_2000-2010.csv
+
+<<faostats>>=
+my.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
+my.file <- "FAOSTAT_data_2011-2024.csv"
+my.second.file <- "FAOSTAT_data_2000-2010.csv"
+
+library(data.table)
+
+# Read FAOSTAT data
+fao <- setDT(read.csv(paste0(my.path, my.file)))
+fao.2 <- setDT(read.csv(paste0(my.path, my.second.file)))
+
+
+library(data.table)
+
+make_fao_exports <- function(fao) {
+
+  # Ensure data.table
+  setDT(fao)
+
+  # NA-safe summation with consistent numeric type
+  sum_na <- function(x) {
+    if (length(x) == 0L || all(is.na(x))) {
+      return(NA_real_)
+    }
+
+    sum(as.numeric(x), na.rm = TRUE)
+  }
+
+  # Items included in intermediate definition
+  intermediate_items <- c(
+    "Roundwood",
+    "Wood chips, particles and residues"
+  )
+
+  # Keep export-value observations
+  d <- fao[
+    Element == "Export value"
+  ]
+
+  # Construct country-year variables
+  exports <- d[
+    ,
+    .(
+      export_value_narrow =
+        sum_na(Value[
+          Item == "Roundwood"
+        ]),
+
+      export_value_intermediate =
+        sum_na(Value[
+          Item %chin% intermediate_items
+        ]),
+
+      export_value_broad =
+        sum_na(Value[
+          Item == "Wood and paper products (export/import)"
+        ])
+    ),
+    by = .(
+      Area.Code..M49.,
+      Area,
+      Year
+    )
+  ]
+
+  setorder(
+    exports,
+    Area.Code..M49.,
+    Year
+  )
+
+  return(exports)
+}
+
+
+# Apply to the two FAOSTAT datasets
+exports_2011_2024 <- make_fao_exports(fao)
+exports_2000_2010 <- make_fao_exports(fao.2)
+
+
+# Combine the periods
+exports <- rbindlist(
+  list(
+    exports_2000_2010,
+    exports_2011_2024
+  ),
+  use.names = TRUE,
+  fill = TRUE
+)
+
+setorder(
+  exports,
+  Area.Code..M49.,
+  Year
+)
+
+## Cleanup, and add a three letter country code.
+library(globallivingconditions)
+exports[, country.code := iso.3166$String.code[match(exports$Area.Code..M49., iso.3166$numeric)], ]
+exports[, Area.Code..M49. := NULL, ]
+exports[, Area := NULL, ]
+setcolorder(exports, "country.code")
+colnames(exports) <- gsub("Year", "year", colnames(exports))
+setkey(exports, country.code, year)
+
+@ 
