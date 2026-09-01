@@ -785,8 +785,7 @@ print(xtable(sample.2, caption = "The data points for a top level region in the 
 % \label{tab:def1}
 % \end{table}
 
-Adding Trade data from the FAO
-
+%% Adding Trade data from the FAO
 %% input: "FAOSTAT_data_2011-2024.csv" and "FAOSTAT_data_2000-2010.csv" to be in the path
 %% "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
 %% output: a data.table object called export with three variables per country and year

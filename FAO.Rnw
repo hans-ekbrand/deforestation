@@ -1,9 +1,15 @@
+\section{Adding Trade data from the FAO}
+\label{sec:adding-trade-data}
+
 This document produces three summary variables of forestry-related export per country and years, based on FAO statistics provided in
 
 FAOSTAT\_data\_2011-2024.csv and FAOSTAT\_data\_2000-2010.csv
 
 <<faostats>>=
-my.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
+## my.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
+
+my.path <- "/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
+
 my.file <- "FAOSTAT_data_2011-2024.csv"
 my.second.file <- "FAOSTAT_data_2000-2010.csv"
 
@@ -107,4 +113,5 @@ setcolorder(exports, "country.code")
 colnames(exports) <- gsub("Year", "year", colnames(exports))
 setkey(exports, country.code, year)
 
-@ 
+@
+
