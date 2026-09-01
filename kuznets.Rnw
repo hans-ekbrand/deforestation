@@ -786,11 +786,25 @@ print(xtable(sample.2, caption = "The data points for a top level region in the 
 % \label{tab:def1}
 % \end{table}
 
+Adding Trade data from the FAO
+
+%% input: "FAOSTAT_data_2011-2024.csv" and "FAOSTAT_data_2000-2010.csv" to be in the path
+%% "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
+%% output: a data.table object called export with three variables per country and year
+
+<<import.and.wash.fao, child="~/src/deforestation/FAO.Rnw">>=
+@
+
+<<add.fao.data>>=
+setkey(my.clean.dt, country.code, year)
+
+@ 
+
 Using the forest coverage change defined in relation to the previous measurement rather than at $t_{0}$ we get the following predictions (in this case the quadratic model was no worse than the model with a qubic term, so the following is based on a model with only a linear and a quadratic term for GNI).
 
 
 <<kuznet-4b-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state, not the state at t0.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.4 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.4 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my..dt.clean)
 my.fit.deforestation.5 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt.clean)
 my.eff <- Effect("gdp.log", my.fit.deforestation.4,
                  xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
