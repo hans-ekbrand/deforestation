@@ -690,7 +690,7 @@ p +
 @
 
 <<fcc.def, echo = FALSE, results = "asis", eval=TRUE>>=
-library(data.table)
+library(data.table); library(xtable); library(globallivingconditions)
 setkey(my.dt, area.name)
 ## import state at t0 again
 deforestation.dt <- data.table(read.csv("forest_change.csv"))
@@ -728,7 +728,6 @@ write.csv(my.dt.clean, file = "commondata1.csv")
 sample.2 <- my.dt.clean[top.level.region == "Zimbabwe.Midlands", list(country, top.level.region, area.name, year, iwi, gdp.log, forest_coverage, cummulative_forestation_change, forestation_change_5yr_forward), ]
 colnames(sample.2) <- c("Country", "Top level Region", "Area name", "year", "IWI", "GNI.log", "FC", "cum.FCC", "F5YFCC")
 
-library(xtable)
 print(xtable(sample.2, caption = "The data points for a top level region in the merged dataset. 'IWI', predicted average IWI based on observed IWI and education in years for a common cohort'; 'FC' = 'Forest Coverage'; 'cum.FCC' = 'Cummulative Forest Coverage Change'; 'F5YFCC' = 'Forward-looking 5 years Forest Coverage Change, ie, the FCC for the coming 5 years after this year. Not Available for the last observation in each area", label = "tab:def1"), booktabs = TRUE)
 
 @
