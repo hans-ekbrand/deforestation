@@ -1,9 +1,17 @@
 \section{Adding Trade data from the FAO}
 \label{sec:adding-trade-data}
 
-This document produces three summary variables of forestry-related export per country and years, based on FAO statistics provided in
+This document produces three summary variables of forestry-related export per country and years, based on FAO statistics provided in FAOSTAT\_data\_2011-2024.csv and FAOSTAT\_data\_2000-2010.csv.
 
-FAOSTAT\_data\_2011-2024.csv and FAOSTAT\_data\_2000-2010.csv
+For each country and year we create three summary measures - from the most to the least inclusive these are.
+
+\begin{itemize}
+\item export_value_broad
+\item export_value_intermediate
+\item export_value_narrow
+\end{itemize}
+
+where ``broad'' indicates that even goods that might have been produced by \emph{imported} forestry products was used, e.g. paper and wood panels etc. ``Narrow'' only includes ``Roundwood'', while ``Intermediate'' also include ``Wood chips, particles and residues''.
 
 <<faostats>>=
 ## my.path <- "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
