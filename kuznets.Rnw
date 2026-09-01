@@ -115,7 +115,9 @@ cluster.coordinates[, (c("lon", "lat")) := NULL, ]
 
 ## merge back to my.dt
 my.dt <- merge(my.dt, cluster.coordinates)
-my.dt$lon.lat <- NULL
+
+## 2026-08-31, this row does not work.
+## my.dt$lon.lat <- NULL
 
 ## 6. Import the CSV version of the deforestation data
 ## original source: My data set via zenodo
@@ -439,31 +441,29 @@ temp.f.2(my.dt, pred_grid, output = "figure", my.area = "24.Luanda.Cacuaco.Funda
 
 Considering again the area in Angola shown in Table \ref{tab:iwi1}, Figure \ref{fig:iwi} shows observed data together with predictions for each of the three models. The red, orange and green lines are all based on regression analysis: the red line represents a regression with a single independent variable, ``year.of.interview'', while the green line is based on both ``year.of.interview'', and ``education.in.years'' (see table \ref{tab:iwi1}). The orange line should in general be preferable since it uses the signal from not only this area but also other areas in the same top level region and in the same country. However, that signal will also shrink the differences between areas and predict values of IWI that make the areas appear more similar than they would have if the predictions for one area was completely independent of predictions for nearby areas. So, it comes with a price : stability is the gain, and decreased area differences is the price.
 
-When attaching the (de-)forestation data to the IWI development data, match IWI data of year $x$ with deforestation data from year $x+1$ since, in this analysis, we test for the effect of IWI on deforestation.
-
-<<show-derivatives, eval=FALSE>>=
-## 10. Merge deforestation data and DHS data by area names, shifted by
-## one year so that living conditions preceeds deforestation.
-
-my.dt[, year := year.of.interview + 1, ]
-
-@
-
+\texttt{pred_grid} is the full object, now create \texttt{living.conditions.dt} with only \texttt{area.name}, \texttt{country}, \texttt{top level region}, \texttt{year of interview} and the \texttt{predicted average IWI value}, thus droping the variable average education in years variable.
 
 <<merge.data>>=
 library(data.table)
 living.conditions.dt <- pred_grid[which(year.of.interview %in% seq(from=2000, to=2020, by=5)), list(area.name, country, top.level.region, year.of.interview, iwi = iwi_pred), ]
-deforestation.dt <- deforestation_yearly.dt[which(year %in% seq(from=2000, to=2020, by=5)), list(area.name = region, year.of.interview = year - 5, forestation_change_year = year, forestation_change), ]
+
+## Old code that connected living conditions with deforestation five years later.
+## deforestation.dt <- deforestation_yearly.dt[which(year %in% seq(from=2000, to=2020, by=5)), list(area.name = region, year.of.interview = year - 5, forestation_change_year = year, forestation_change), ]
+
+## New code that connects deforestation change with the same year of living conditions
+deforestation.dt <- deforestation_yearly.dt[which(year %in% seq(from=2000, to=2020, by=5)), list(area.name = region, year.of.interview = year, forestation_change_year = year, forestation_change), ]
+
 setkey(deforestation.dt, area.name, year.of.interview)
 setkey(living.conditions.dt, area.name, year.of.interview)
-my.dt <- merge(deforestation.dt, living.conditions.dt)
+my.dt <- merge(deforestation.dt, living.conditions.dt, all.x = FALSE, all.y = TRUE)
+my.dt$forestation_change_year <- NULL
 @
 
 <<merge.data.show, results = "asis">>=
 library(xtable)
-print(xtable(head(my.dt[, list(`Name of area` = area.name, YoELC = year.of.interview, YoFC = forestation_change_year, FC = forestation_change, IWI = iwi), ]),
-             digits = c(0, 0, 0, 0, 2, 1),
-             caption = "Living conditions data for year 2000 is connected to the forestation change for the \\emph{following} five years. 'YoELC' = 'Year of Estimated Living Conditions'; 'YoFC' = 'Year of Forest coverage change'; 'FC' = Forest coverage change in comparison to year 2000 (observed)'."
+print(xtable(head(my.dt[, list(`Name of area` = area.name, Year = year.of.interview, FC = forestation_change, IWI = iwi), ]),
+             digits = c(0, 0, 0, 2, 1),
+             caption = "Living conditions data for year 2000 is connected to the forestation change for the \\emph{following} five years. 'FC' = Forest coverage change in comparison to year 2000 (observed)'."
              ), booktabs = TRUE, include.rownames = FALSE)
 
 @ 
@@ -700,63 +700,90 @@ setorder(my.dt.full, area.name, year.of.interview)
 
 my.dt.full[
   ,
-  forestation_state_at_end := FC_init + forestation_change
+  forestation_state := FC_init + forestation_change
 ]
 
 my.dt.full[
-  ,
-  current_state := data.table::shift(forestation_state_at_end, fill = first(FC_init)),
+  order(area.name, year.of.interview),
+  forestation_change_5yr_forward := shift(forestation_state, type = "lead") - forestation_state,
   by = area.name
 ]
 
-my.dt.full[
-  ,
-  forestation_change_abs := forestation_state_at_end - current_state
+my.dt.clean <- my.dt.full[, list(country, top.level.region, area.name, year = year.of.interview, iwi, gdp.log, forest_coverage = forestation_state, cummulative_forestation_change = forestation_change, forestation_change_5yr_forward), ]
+
+my.dt.clean[
+  order(area.name, year),
+  forestation_change_5yr_backward :=
+    forest_coverage - shift(forest_coverage, type = "lag"),
+  by = area.name
 ]
 
-my.dt.full[
-  ,
-  forestation_change := forestation_change_abs
-]
+country <- sapply(strsplit(my.dt.clean$country, split = ".", fixed = TRUE), function(x) { x[1] })
+my.dt.clean$country.code <- iso.3166$String.code[match(country, iso.3166$String)]
+setcolorder(my.dt.clean, "country.code")
 
-my.dt.clean <- my.dt.full[, list(country, top.level.region, area.name, year = year.of.interview, iwi, gdp.log, forest_coverage = current_state, forestation_change), ]
+write.csv(my.dt.clean, file = "commondata1.csv")
 
-## sample.2 <- my.dt.clean[top.level.region == "Zimbabwe.Midlands", ]
-## colnames(sample.2) <- c("Country", "Top level Region", "Area name", "year", "IWI", "GNI.log", "FC", "FCC")
+sample.2 <- my.dt.clean[top.level.region == "Zimbabwe.Midlands", list(country, top.level.region, area.name, year, iwi, gdp.log, forest_coverage, cummulative_forestation_change, forestation_change_5yr_forward), ]
+colnames(sample.2) <- c("Country", "Top level Region", "Area name", "year", "IWI", "GNI.log", "FC", "cum.FCC", "F5YFCC")
 
-## library(xtable)
-## print(xtable(sample.2, caption = "The data points for a top level region in the merged dataset. 'FC' = 'Forest Coverage'; 'FCC' = 'Forest Coverage Change'.", label = "tab:def1"), booktabs = TRUE)
+library(xtable)
+print(xtable(sample.2, caption = "The data points for a top level region in the merged dataset. 'IWI', predicted average IWI based on observed IWI and education in years for a common cohort'; 'FC' = 'Forest Coverage'; 'cum.FCC' = 'Cummulative Forest Coverage Change'; 'F5YFCC' = 'Forward-looking 5 years Forest Coverage Change, ie, the FCC for the coming 5 years after this year. Not Available for the last observation in each area", label = "tab:def1"), booktabs = TRUE)
 
 @
 
-
-% latex table generated in R 4.5.1 by xtable 1.8-4 package
-% Fri May 29 00:48:35 2026
+% latex table generated in R 4.5.1 by xtable 1.8-8 package
+% Tue Sep  1 12:52:54 2026
 \begin{table}[ht]
-  \centering
-\resizebox{\textwidth}{!}{%  
-\begin{tabular}{rlllrrrrr}
+\centering
+\begin{tabular}{rlllrrrrrr}
   \toprule
- & Country & Top level Region & Area name & year & IWI & GNI.log & FC & FCC \\ 
+ & country & top.level.region & area.name & year & iwi & gdp.log & forest\_coverage & cummulative\_forestation\_change & forestation\_change\_5yr\_forward \\ 
   \midrule
-1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & -0.17 \\ 
-  2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.48 \\ 
-  3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & 0.28 \\ 
-  4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.02 \\ 
-  5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & -0.56 \\ 
-  6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.24 \\ 
-  7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.43 \\ 
-  8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -0.10 \\ 
-  9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & -0.39 \\ 
-  10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.38 \\ 
-  11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2010 & 23.16 & 7.41 & 15.17 & -0.60 \\ 
-  12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2015 & 26.49 & 7.62 & 14.58 & -0.38 \\ 
+1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & 0.00 & -0.17 \\ 
+  2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.17 & -0.48 \\ 
+  3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & -0.65 & 0.28 \\ 
+  4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.37 & -0.02 \\ 
+  5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2020 & 31.23 & 7.57 & 7.82 & -0.39 &  \\ 
+  6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & 0.00 & -0.56 \\ 
+  7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.56 & -0.24 \\ 
+  8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.80 & -0.43 \\ 
+  9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -1.23 & -0.10 \\ 
+  10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2020 & 25.67 & 7.57 & 18.19 & -1.34 &  \\ 
+  11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & 0.00 & -0.39 \\ 
+  12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.39 & -0.38 \\ 
    \bottomrule
 \end{tabular}
-}
-\caption{Some data points for areas in a top level region in the merged dataset. 'FC' = 'Forest Coverage'; 'FCC' = 'Forest Coverage Change'.} 
-\label{tab:def1}
+\caption{The data points for a top level region in the merged dataset. 'IWI', predicted average IWI based on observed IWI and education in years for a common cohort'; 'FC' = 'Forest Coverage'; 'cum.FCC' = 'Cummulative Forest Coverage Change'; 'F5YFCC' = 'Forward-looking 5 years Forest Coverage Change, ie, the FCC for the coming 5 years after this year. Not Available for the last observation in each area}
 \end{table}
+
+% % latex table generated in R 4.5.1 by xtable 1.8-4 package
+% % Fri May 29 00:48:35 2026
+% \begin{table}[ht]
+%   \centering
+% \resizebox{\textwidth}{!}{%  
+% \begin{tabular}{rlllrrrrr}
+%   \toprule
+%  & Country & Top level Region & Area name & year & IWI & GNI.log & FC & FCC \\ 
+%   \midrule
+% 1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & -0.17 \\ 
+%   2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.48 \\ 
+%   3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & 0.28 \\ 
+%   4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.02 \\ 
+%   5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & -0.56 \\ 
+%   6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.24 \\ 
+%   7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.43 \\ 
+%   8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -0.10 \\ 
+%   9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & -0.39 \\ 
+%   10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.38 \\ 
+%   11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2010 & 23.16 & 7.41 & 15.17 & -0.60 \\ 
+%   12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2015 & 26.49 & 7.62 & 14.58 & -0.38 \\ 
+%    \bottomrule
+% \end{tabular}
+% }
+% \caption{Some data points for areas in a top level region in the merged dataset. 'FC' = 'Forest Coverage'; 'FCC' = 'Forest Coverage Change'.} 
+% \label{tab:def1}
+% \end{table}
 
 Using the forest coverage change defined in relation to the previous measurement rather than at $t_{0}$ we get the following predictions (in this case the quadratic model was no worse than the model with a qubic term, so the following is based on a model with only a linear and a quadratic term for GNI).
 
