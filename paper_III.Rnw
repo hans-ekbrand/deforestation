@@ -1,0 +1,77 @@
+\documentclass[10pt,english]{article}
+\usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry}
+\usepackage[english]{babel}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{varioref}
+
+\title{analyses for Paper III, part II}
+\begin{document}
+
+This document builds on ``analyses for Paper III'' (filename ``kuznets.Rnw'') and aims at replicating Björns analyses in stata. Björn has added data to the output of ``kuznets.Rnw'', and saved this in the file ``work1.dta''. The changes include:
+
+\begin{itemize}
+\item Adding variables from the VDEM project, specifically data on corruption.
+\item LogLog transforming one variable (which one, was it GDP?)
+\end{itemize}
+
+Eventually, I would like to be able to replicate Björns data manipulations and have a completely reproducible pipeline. Björn has provided the source code (Stata) so it should be easy enough. For now I work with his data, work1.dta.
+
+\subsubsection*{Import data}
+\label{sec:import-data}
+
+Import Björns dataset.
+
+<<setup.outer, echo=FALSE, tidy=FALSE, message=FALSE>>=
+library(knitr)
+opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE, fig.pos = 'htb', tidy.opts=list(blank=FALSE, width.cutoff=50), background='white', tidy=TRUE, error=TRUE, message=FALSE, dev="pdf", autodep = TRUE)
+opts_knit$set(root.dir = ".")
+options(scipen=999) ## Avoid scientific formating of large numbers.
+@
+
+<<paper-iii-part-2-import.data>>=
+library(readstata13)
+my.dt <- setDT(readstata13::read.dta13("~/Downloads/work1.dta"))
+@
+
+\subsubsection*{Run model 1}
+\label{sec:run-model-1}
+
+The dependent variable is \texttt{deforest\_forward}, which capture how much deforestation there will be in the future five years from time $t$, which is the time when the value of the independent variables was measured. \texttt{deforest\_forward} is negative when the \texttt{forest\_coverage} is increasing.
+
+
+<<paper-iii-part-2-run.model>>=
+library(lme4)
+library(lattice); library(latticeExtra)
+library(effects)
+my.dt$iwi <- scale(my.dt$iwi)
+iwi_range <- range(my.dt$iwi, na.rm = TRUE)
+my.dt.2 <- my.dt[anyforest > 0, ]
+## my.fit.1 <- lmer(n_deforest_forward ~ iwi + I(iwi^2) + I(iwi^3) + (1 + year) + (1 | country) + (1 | toplevelregion) + (1 | areaname), data = my.dt.2)
+my.fit.1 <- lmer(n_deforest_forward ~ iwi + I(iwi^2) + I(iwi^3) + I(iwi^4) + (1 + year) + (1 + country) + (1 | toplevelregion) + (1 | areaname), data = my.dt.2)
+my.eff <- Effect("iwi", my.fit.1,
+                 xlevels = list(iwi = seq(iwi_range[1], iwi_range[2], length.out = 100)))
+## plot(my.eff, grid = TRUE)
+## plot(my.eff, grid = TRUE,
+##      panel = function(x, y, ...) {
+##        lattice::panel.abline(h = 0, col = "red", lty = 2)
+##        effects::panel.effect(x, y, ...)
+##      })
+
+## plot(my.eff, grid = TRUE, 
+##      ref = list(h = 0, col = "red", lty = 2))
+
+p <- plot(my.eff, grid = TRUE)
+
+original_panel <- p$panel
+
+p$panel <- function(...) {
+  original_panel(...)
+  lattice::panel.abline(h = 0, col = "red", lty = 2, lwd = 1.5)
+}
+
+print(p)
+
+@ 
+
+\end{document}
