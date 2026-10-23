@@ -200,6 +200,16 @@ deforestation_yearly.dt[, (c("interval_start", "interval_end")) := NULL, ]
 area.commons <- my.dt[, list(
     country.code.ISO.3166.alpha.3 = unique(country.code.ISO.3166.alpha.3)), by = area.name]
 
+## Share of respondents living in rural, urban and refugee settings per area
+## (pooled over all survey years). Computed here while individual level data
+## is still available, merged onto the final data set in the chunk fcc.def.
+rural.dt <- my.dt[is.na(area.name) == FALSE & is.na(rural) == FALSE,
+                  list(share.rural   = mean(rural == "Rural"),
+                       share.urban   = mean(rural == "Urban"),
+                       share.refugee = mean(rural == "Refugee")),
+                  by = area.name]
+saveRDS(rural.dt, file = "kuznet.rural.RDS")
+
 my.dt <- my.dt[, c("area.name", "year.of.interview", "iwi", "education.in.years", "age")]
 saveRDS(my.dt, file = "kuznet.1.RDS")
 
@@ -721,6 +731,10 @@ my.dt.clean[
 
 country <- sapply(strsplit(my.dt.clean$country, split = ".", fixed = TRUE), function(x) { x[1] })
 my.dt.clean$country.code <- iso.3166$String.code[match(country, iso.3166$String)]
+
+## add the shares of rural, urban and refugee respondents per area
+rural.dt <- readRDS("kuznet.rural.RDS")
+my.dt.clean <- merge(my.dt.clean, rural.dt, by = "area.name", all.x = TRUE)
 setcolorder(my.dt.clean, "country.code")
 
 write.csv(my.dt.clean, file = "commondata1.csv")
