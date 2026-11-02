@@ -29,9 +29,16 @@ opts_knit$set(root.dir = ".")
 options(scipen=999) ## Avoid scientific formating of large numbers.
 @
 
+<<paper-iii-path>>=
+## paper.iii.path <- "~/Downloads/"
+## sshfs 245:/ ~/mnt/poverty/
+paper.iii.path <- "~/mnt/poverty/media/shared/Deforestation and poverty - General/Paper III/Data/"
+
+@ 
+
 <<paper-iii-part-2-import.data>>=
 library(readstata13)
-my.dt <- setDT(readstata13::read.dta13("~/Downloads/work1.dta"))
+my.dt <- setDT(readstata13::read.dta13(paste0(paper.iii.path, "work1.dta")))
 @
 
 \subsubsection*{Run model 1}
