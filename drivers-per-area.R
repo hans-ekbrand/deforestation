@@ -43,6 +43,12 @@
 ##                                    the driver ("none" if no driver); <class> is the GLCLU class
 ##                                    in year1 (shortveg, cropland, builtup, other = water/other).
 ##                                    These sum to loss_total.
+##   palm_from_forest_<type>_<period> oil palm planted on forest land by plantation type in the 2021
+##                                    extent map (industrial, smallholder; untyped = planting year
+##                                    but not oil palm in the extent map) and planting period
+##                                    (early = year0+1..year0+10, late = the rest up to year1);
+##                                    needs --palm_type_dir. These sum to palm_from_forest.
+##   palm_from_nonforest_<type>       the same for land that was not forest in year0
 ##   pct_*                            the same, per cent of the land area in year0
 
 ## ---------------------------------------------------------------------------
@@ -64,8 +70,14 @@ drivers_cfg <- modifyList(default_cfg, list(
     palm_dir         = "",           # directory with the oil palm planting-year GeoTIFFs; "" = skip oil palm
     palm_pattern     = "\\.tif$",
     palm_year_offset = 0L,           # added to the raster value to get the calendar year (see --inspect)
+    palm_type_dir    = "",           # directory with the oil palm extent 2021 GeoTIFFs (0 other,
+                                     # 1 industrial, 2 smallholder); "" = no split by type
+    palm_type_pattern = "\\.tif$",
+    early_years      = 10L,          # planted in year0+1 .. year0+early_years counts as early
+    gdal_cache_mb    = 256L,         # GDAL block cache per worker (the default is 5% of RAM *per process*)
+    mem_share        = 0.6,          # share of RAM that all workers together may use for terra
     inspect          = 0L,
-    cache_dir        = "drivers-cache-v2",   # v2: adds the cross-classified loss_<path>_to_<class>
+    cache_dir        = "drivers-cache-v3",   # v3: adds oil palm by type and planting period
     out_file         = "forest_drivers_2000_2020.csv",
     log_file         = "drivers.log"
 ))
@@ -76,12 +88,12 @@ driver_labels_of <- function(cfg) trimws(strsplit(cfg$driver_labels, ",")[[1]])
 ## Oil palm tile index (extent of every tile in EPSG:4326)
 ## ---------------------------------------------------------------------------
 
-palm_index <- function(cfg) {
-    if (!nzchar(cfg$palm_dir)) return(NULL)
-    files <- list.files(path.expand(cfg$palm_dir), pattern = cfg$palm_pattern,
+palm_index <- function(cfg, dir = cfg$palm_dir, pattern = cfg$palm_pattern, idx_name = "palm_index.RDS") {
+    if (!nzchar(dir)) return(NULL)
+    files <- list.files(path.expand(dir), pattern = pattern,
                         recursive = TRUE, full.names = TRUE)
-    if (!length(files)) stop("No oil palm files matching ", cfg$palm_pattern, " in ", cfg$palm_dir)
-    idx_file <- file.path(cfg$cache_dir, "palm_index.RDS")
+    if (!length(files)) stop("No oil palm files matching ", pattern, " in ", dir)
+    idx_file <- file.path(cfg$cache_dir, idx_name)
     if (file.exists(idx_file)) {
         idx <- readRDS(idx_file)
         if (setequal(idx$file, files)) return(idx)
@@ -96,6 +108,9 @@ palm_index <- function(cfg) {
     saveRDS(idx, idx_file)
     idx
 }
+
+palm_type_index <- function(cfg)
+    palm_index(cfg, cfg$palm_type_dir, cfg$palm_type_pattern, "palm_type_index.RDS")
 
 ## ---------------------------------------------------------------------------
 ## Inspect the input files
@@ -124,6 +139,13 @@ inspect_inputs <- function(cfg) {
             paste(range(v[v > 0]) + cfg$palm_year_offset, collapse = "-"),
             ". Values <= 0 are treated as 'no oil palm'.\n", sep = "")
     }
+    if (nzchar(cfg$palm_type_dir)) {
+        tidx <- palm_type_index(cfg)
+        cat("\n== Oil palm extent 2021:", nrow(tidx), "files in", cfg$palm_type_dir, "\n")
+        r <- rast(tidx$file[1]); print(r)
+        cat("\nValue frequencies in", basename(tidx$file[1]), "(expected 0 other, 1 industrial, 2 smallholder):\n")
+        print(table(values(r, mat = FALSE), useNA = "ifany"))
+    }
     invisible(NULL)
 }
 
@@ -140,10 +162,17 @@ cross_names <- function(cfg) {
     as.vector(t(outer(paths, dest_classes, function(p, d) paste0("loss_", p, "_to_", d))))
 }
 
+palm_types <- c("untyped", "industrial", "smallholder")      # extent map codes 0 (or missing), 1, 2
+
+palm_type_names <- function() {
+    c(as.vector(t(outer(palm_types, c("early", "late"), function(t, p) paste0("palm_from_forest_", t, "_", p)))),
+      paste0("palm_from_nonforest_", palm_types))
+}
+
 summary_names <- function(cfg) {
     c("valid_2000", "loss_total", paste0("loss_", c("none", driver_labels_of(cfg))),
       "palm_from_forest", paste0("palm_from_forest_", c("forest", "shortveg", "cropland", "other")),
-      "palm_from_nonforest", "palm_before", cross_names(cfg))
+      "palm_from_nonforest", "palm_before", cross_names(cfg), palm_type_names())
 }
 
 make_summary_fun <- function(cfg) {
@@ -172,11 +201,19 @@ make_summary_fun <- function(cfg) {
             s <- rowsum(w[loss], k[loss])
             cross[as.integer(rownames(s)) + 1L] <- s[, 1]
         }
+        ## oil palm by type (extent 2021) and planting period
+        pt <- as.integer(df$ptype); pt[is.na(pt) | pt < 1L | pt > 2L] <- 0L
+        early <- py <= y0 + cfg$early_years
+        pnf <- !forest0 & land0 & planted
+        ## order: untyped early, untyped late, industrial early, ... (as palm_type_names())
+        by_type <- c(as.vector(vapply(0:2, function(k)
+                         c(sum(w[pf & pt == k & early]), sum(w[pf & pt == k & !early])), c(0, 0))),
+                     vapply(0:2, function(k) sum(w[pnf & pt == k]), 0))
         c(sum(w[land0]), sum(w[loss]), loss_by_d,
           sum(w[pf]), vapply(0:3, function(k) sum(w[pf & c1g == k]), 0),
-          sum(w[!forest0 & land0 & planted]),
+          sum(w[pnf]),
           sum(w[has_palm & py <= y0 & land0]),
-          cross)
+          cross, by_type)
     }
 }
 
@@ -202,10 +239,12 @@ process_piece <- function(g, files, drv, pidx, sfun, cfg) {
     if (is.null(r0)) return(zero)                          # piece does not overlap this tile
     r1 <- crop(rast(files[["y1"]]), ext(r0))
     d  <- resample(drv, r0, method = "near")
-    p  <- palm_on_grid(r0, as.vector(ext(r0)), pidx)
+    p  <- palm_on_grid(r0, as.vector(ext(r0)), pidx$year)
     if (is.null(p)) { p <- rast(r0); values(p) <- NA_integer_ }
-    s <- c(r0, r1, d, p)
-    names(s) <- c("y0", "y1", "drv", "palm")
+    pt <- palm_on_grid(r0, as.vector(ext(r0)), pidx$type)
+    if (is.null(pt)) { pt <- rast(r0); values(pt) <- NA_integer_ }
+    s <- c(r0, r1, d, p, pt)
+    names(s) <- c("y0", "y1", "drv", "palm", "ptype")
     res <- exact_extract(s, st_sf(geometry = st_sfc(g, crs = 4326)), fun = sfun,
                          summarize_df = TRUE, progress = FALSE)
     m <- if (is.list(res)) res[[1]] else as.numeric(res)
@@ -269,15 +308,29 @@ run_drivers <- function(cfg = drivers_cfg) {
     terra::terraOptions(tempdir = cfg$tmp_dir)
     Sys.setenv(CPL_TMPDIR = cfg$tmp_dir)
 
-    pidx <- palm_index(cfg)
-    if (is.null(pidx)) log_msg(cfg, "no --palm_dir given: oil palm columns will be 0")
-    else log_msg(cfg, "oil palm: ", nrow(pidx), " tiles")
+    pidx <- list(year = palm_index(cfg), type = palm_type_index(cfg))
+    if (is.null(pidx$year)) log_msg(cfg, "no --palm_dir given: oil palm columns will be 0")
+    else log_msg(cfg, "oil palm planting year: ", nrow(pidx$year), " tiles")
+    if (is.null(pidx$type)) log_msg(cfg, "no --palm_type_dir given: all oil palm is 'untyped'")
+    else log_msg(cfg, "oil palm extent (type): ", nrow(pidx$type), " tiles")
 
     areas <- read_areas(cfg)
     log_msg(cfg, "areas: ", nrow(areas))
 
     oplan <- future::plan(); on.exit(future::plan(oplan), add = TRUE)
     oopt <- options(future.globals.maxSize = +Inf); on.exit(options(oopt), add = TRUE)
+    ## Memory limits per worker, set before the workers are forked. By default every process may
+    ## use 5% of RAM for GDAL's block cache and 60% of RAM for terra, which with many workers adds
+    ## up to more than the machine has.
+    terra::setGDALconfig("GDAL_CACHEMAX", as.character(cfg$gdal_cache_mb))
+    ram.gb <- tryCatch(as.numeric(sub("\\D+(\\d+).*", "\\1",
+                           grep("^MemTotal", readLines("/proc/meminfo"), value = TRUE))) / 2^20,
+                       error = function(e) NA)
+    if (!is.na(ram.gb)) terra::terraOptions(memmax = cfg$mem_share * ram.gb / max(1, cfg$workers))
+    log_msg(cfg, "memory: ", if (is.na(ram.gb)) "unknown RAM" else sprintf("%.0f GB RAM", ram.gb),
+            ", GDAL cache ", cfg$gdal_cache_mb, " MB and terra max ",
+            if (is.na(ram.gb)) "default" else sprintf("%.1f GB", cfg$mem_share * ram.gb / max(1, cfg$workers)),
+            " per worker")
     if (cfg$workers > 1) future::plan(future::multicore, workers = cfg$workers) else future::plan(future::sequential)
     terra::setGDALconfig("GDAL_NUM_THREADS", "1")
 

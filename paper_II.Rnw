@@ -2,38 +2,21 @@
 \usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry}
 \usepackage[english]{babel}
 \usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
 \usepackage{amsmath}
 \usepackage{varioref}
+\usepackage{natbib} %% author-year citations
+\bibliographystyle{apalike}
+\usepackage{hyperref} %% \url and \href in the bibliography
 
-\title{Analyses for Paper II}
+\title{Deforestation and household wealth in low- and middle-income countries: Evidence from 12000 subnational areas in 55 countries}
+\author{Hans Ekbrand}
+\date{}
+
 \begin{document}
-
-% \section{Problem description}
-% The purpose of this document is to argue for way to solve this problem: the data about forest coverage is only available for every fifth year, but the observations on living conditions happen every now and then, seldom on those particular years that we have forest coverage data for.
-
-% We could interpolate one of them, or both. If we interpolate only forest coverage data we have a observations at years without any meaningful pattern, that might not be a problem in itself, or just a small problem. If we impute (arguably we can do better than just linear interpolation of local data in this case, since unlike the forest coverage data the living conditions data is always just sample data, the forest coverage data is the total population), living conditions ata we have data at every fifth year during the study period. The third option is to impute both types of data. This gives one measurement point every year during the study period.
-
-% After some consideration, I'll decided to define the outcome as ``forest coverage change over the next 5 year'' to avoid having to interpolate forest change data. Living conditions data will be modelled (and hopefully more useful than the raw observed average).
-
-\section{Matching point data from DHS with areas in the deforestation data}
-Based on geocoded deforestation data for every fifth year from year 2000 up to 2020, and geocoded data on living conditions based on the DHS, construct a data set that includes an area average for household wealth index (IWI), GNI, and the change in deforestation for the forthcoming five years. The plan is as follows.
-
-\begin{enumerate}
-\item Import a dataset produced by the package globallivingconditions, this dataset contains individual records with GIS coordinates.
-\item Discard unneeded columns from that dataset.
-\item Import the administrative boundaries produced by the package globallivingconditions. This is a sub set of the boundaries in the published forest change dataset, and it is most efficient to work with this subset directly.
-\item Use the unique GIS-coordinates from DHS to create a formal SpatialPoints object with the same CRS defintion as the set of boundaries
-\item Use a ``find the area into which this point falls'' GIS-function to classify all points into areas.
-\item Import the CSV version (non-geometric) version of the deforestation dataset.
-\item Discard the rows in that dataset that represent areas which has no DHS data point or has no deforestation data (a few lakes)
-\item Convert deforestation data from wide to long format
-\item Make improved estimates of average IWI per area, based on years of education for a constant cohort (see below). Only try to fit a straight line for the change of IWI over time per area, we have too few points for curve-linear fits per area. We include years as dummies to capture global economic trends, so the total change is not necessarily linear.
-\item Merge deforestation data for year $x$ with estimated livingconditions data for year $x-5$ by area names. This way we can use the living conditions estimates as an independent variable and deforestation data as dependent variable, since the (estimated) living conditions refer to the period \emph{before} the forest coverage data was recorded.
-\end{enumerate}
-
-
-\section{Forest change data}
-The original source only provides data for every fifth year, starting at year 2000. 
+\author{Hans Ekbrand, Mary Zhang, Björn Halleröd}
+\maketitle{}
 
 <<opts.chunk.parent, echo = FALSE>>=
 opts_chunk$set(results='hide', cache=TRUE, echo=FALSE, warning=FALSE,
@@ -42,7 +25,91 @@ width.cutoff=50), background='white', tidy=TRUE, error=TRUE, message=FALSE,
 dev="png", dpi = 200, autodep = TRUE)
 opts_knit$set(root.dir = ".")
 options(scipen=999) ## Avoid scientific formating of large numbers.
-@ 
+@
+
+\section{Introduction}
+
+The main purpose of the article is to find empirical based answers to the question “Under what conditions is deforestation associated with improved local living conditions?”
+
+Deforestation has historically expanded humanity’s capacity to produce food, timber, and other goods. Converting forests to cropland, pasture, plantations, etc can create economic opportunities and contribute to improved material living conditions. At the same time, forest loss entails substantial environmental costs, including reductions in biodiversity, the release of greenhouse gases, and the loss of ecosystem services provided by standing forests.
+
+Some of the benefits generated by forest conversion may accrue directly to local populations through increased access to farmland. Other benefits, particularly from agricultural and forestry production integrated into national or international markets, may accrue primarily to actors outside the local area. Conversely, many of the ecosystem services provided by intact forests may generate benefits at regional or global scales rather than being directly captured by local populations. On the one hand, there is potential tension between local economic incentives to convert forests and broader incentives to conserve them and on the other hand there is a potential tension between the local use of the ecosystem services provided by forest and non-local economic interest that can extract value from deforestation.
+
+Understanding these tensions are particularly important in regions where local populations face substantial material deprivation and where forest conversion may represent one of the available pathways to economic development. If deforestation is associated with improved local living conditions in some contexts but not in others, identifying conditions that may predict when forest conversion is associated with local economic gains and when those gains appear limited or non-existant is important.
+
+This article addresses the question: Under what conditions is deforestation associated with improved local living conditions? We focus in particular on one characteristic of the post-deforestation economic landscape: the type of land use that replaces forest. We first examine where deforestation is associated with improvements, stability, or deterioration in local living conditions. We then assess whether post-deforestation land use helps explain this variation.
+By shifting attention from the average relationship between deforestation and well-being to the conditions under which this relationship varies, the article seeks to provide a more differentiated empirical understanding of the socioeconomic consequences of forest loss.
+
+\subsection{Research questions}
+\label{sec:research-questions}
+
+\begin{enumerate}
+\item Where is deforestation associated with improved living conditions for local population and where is deforestation associated with stable or worsened living conditions for the local population?
+\item Does data about what replaced the forest have a predictive power of whether or not deforestation will improve local living conditions?
+\end{enumerate}
+
+\section{Limitations}
+\label{sec:setting-context}
+
+The countries included in this study are those low- and middle-income countries that have been covered with geocoded household surveys, and the selection is driven by the availability of data on living conditions, not by the state of their forests. Many of today's high-income countries cleared much of their forest at earlier stages of their development \citep{owid-global-forest-transition}, and we have not studied deforestation in high-income countries in the study period. The combination of high quality time series data on forest coverage and geocoded household surveys is available from the year 2000 and up to 2020 there is good coverage.
+
+Among the countries covered by the DHS, forest loss 2000--2020 was larger where GNI per capita was lower (Figure \ref{fig:context.countries}).
+
+<<context.countries, fig.cap = "Forest loss 2000--2020 by GNI per capita in 2000, for the countries in the study with at least 1 per cent forest cover in 2000. Forest loss is the share of the forest area of 2000 that was not forest in 2020 \\citep[GLCLU,][]{Potapov2022}, summed over the administrative areas with geocoded DHS surveys. Point size is proportional to the forest area in 2000. The line is a quadratic fit in log GNI.", fig.width = 5, fig.height = 3.4, fig.align = "center", cache.extra = tools::md5sum(c("forest_transitions_2000_2020.csv", "GNI.RDS"))>>=
+library(data.table); library(ggplot2); library(globallivingconditions)
+
+## Forest loss per country, from the area-level transitions (transitions-per-area.R).
+## The first field of the area name is the ISO 3166 numeric country code.
+ctx.tr <- fread("forest_transitions_2000_2020.csv", encoding = "UTF-8")[valid_2000 > 0]
+ctx.tr[, country := iso.3166$String[match(sub("\\..*$", "", region), as.character(iso.3166$numeric))]]
+ctx.dt <- ctx.tr[!is.na(country), list(land_2000 = sum(valid_2000), forest_2000 = sum(forest_2000),
+                                       loss = sum(forest_2000 - forest__forest)), by = country]
+ctx.dt[, `:=`(forest_share_2000 = 100 * forest_2000 / land_2000, loss_pct = 100 * loss / forest_2000)]
+ctx.dt <- ctx.dt[forest_share_2000 >= 1]
+
+## GNI per capita in 2000 (nearest available year). India is by state in GNI.RDS;
+## unless a national value is present, use the mean of the log GNI of the states.
+ctx.gni <- as.data.table(readRDS("GNI.RDS"))[, list(country, year = year.of.interview, gdp.log)]
+if (!"India" %in% ctx.gni$country)
+    ctx.gni <- rbind(ctx.gni, ctx.gni[grepl("^India\\.", country),
+                                      list(country = "India", gdp.log = mean(gdp.log, na.rm = TRUE)), by = year])
+ctx.gni <- ctx.gni[!is.na(gdp.log) & !grepl("^India\\.", country)]
+ctx.gni <- ctx.gni[order(abs(year - 2000))][, .SD[1], by = country]
+ctx.dt <- merge(ctx.dt, ctx.gni[, list(country, gni_year = year, gni = exp(gdp.log))], by = "country")
+ctx.dt[, label := iso.3166$String.code[match(country, iso.3166$String)]]
+ctx.dt[is.na(label), label := country]
+ctx.rho <- cor(ctx.dt$gni, ctx.dt$loss_pct, method = "spearman")
+
+ggplot(ctx.dt, aes(gni, loss_pct)) +
+    geom_hline(yintercept = 0, colour = "#c3c2bd", linewidth = 0.3) +
+    geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE, colour = "#2a78d6",
+                fill = "#b7d3f6", linewidth = 0.6) +
+    geom_point(aes(size = forest_2000), shape = 21, fill = "#2a78d6", colour = "#ffffff",
+               stroke = 0.3, alpha = 0.85) +
+    ggrepel::geom_text_repel(aes(label = label), size = 1.9, colour = "#52514e",
+                             segment.size = 0.2, segment.colour = "#c3c2bd", max.overlaps = 30, seed = 1) +
+    scale_x_log10(breaks = c(250, 500, 1000, 2000, 4000, 8000, 16000), labels = scales::comma) +
+    scale_size_area(max_size = 6, guide = "none") +
+    labs(x = "GNI per capita in 2000 (log scale)", y = "Forest loss 2000-2020 (% of forest in 2000)") +
+    theme_minimal(base_size = 8) +
+    theme(panel.grid.minor = element_blank(), panel.grid.major = element_line(colour = "#eeede9"),
+          axis.title = element_text(colour = "#0b0b0b"), axis.text = element_text(colour = "#52514e"))
+@
+
+The rank correlation between GNI per capita and forest loss across the \Sexpr{nrow(ctx.dt)} countries is \Sexpr{sprintf("%.2f", ctx.rho)} (Spearman). The association also holds between administrative areas within countries and top level regions, when the IWI and the forest cover of the area are controlled for (figure \ref{fig:kuznet-7-effects}, Appendix \ref{app:gni-area}). It is an association among the low- and middle-income countries covered by the DHS, and nothing more: it does not show that a certain GNI per capita \emph{causes} deforestation, nor how deforestation varies over the full range of national incomes. Why the association exists is beyond the scope of this study. Our focus is the consequences of deforestation for those who live in areas where forest is replaced by something else, or more generally, how changes in forest cover relate to changes in local living conditions.
+
+
+%% ---------------------------------------------------------------------------
+%% Data preparation and models. These chunks print nothing; the tables they make
+%% are printed with show.tab() where they are cited.
+%% ---------------------------------------------------------------------------
+
+<<show.tab.helper, cache = FALSE>>=
+## tables are computed in the chunks below and printed where they are cited
+## print.xtable() explicitly: when the table chunks come from the cache, the xtable package
+## may not be loaded, and print() would then print the table as a data frame
+show.tab <- function(t) invisible(do.call(xtable::print.xtable, c(list(t$x), t$args)))
+@
 
 <<import.reduce.match.impute>>=
 library(data.table)
@@ -223,29 +290,6 @@ gc(verbose = FALSE)
 
 @
 
-Figure \ref{fig:deforestation-plot} shows forestation data for one area in the sample, both observations (red dots) and interpolated data for the intervening years (rings). Observations are only available for every fith year, starting at year 2000 and ending at year 2020. This particular area started with a period of forest growth, but between 2010 and 2015 the area covered by forests reduced by about 0.3 percent units. We will only actually use the red points (observations) in the regression analysis.
-
-<<deforestation-plot, fig.cap = "Linear interpolation of (de)-forestation data for a sample area. Red points represent observed data, hollow dots represent interpolated data for the intervening years. Postive values indicate growth of forests, while negative values means decreased forest coverage.", fig.width = 7>>=
-## Find cases with growth and loss
-foo <- deforestation_yearly.dt[ , max(forestation_change) > 0 &
-                                  min(forestation_change) < 0, by = region]
-these <- which(deforestation_yearly.dt$region == foo$region[head(which(foo$V1), n = 1)])
-deforestation_yearly.dt[these,
-                        plot(year, forestation_change, type = "b", xlab = "", ylab = "Change in forestation"), ]
-those <- match(seq(from = 2000, to = 2020, by = 5), deforestation_yearly.dt[these, year])
-      
-deforestation_yearly.dt[these[those],
-                        points(year, forestation_change, col = "red", pch = 20), ]
-
-abline(h = 0, lty = 2)
-
-@ 
-
-\section{Modelling average IWI}
-The DHS data has some useful features at the individual level that can be used to reduce sampling introduces by the DHS (since they do not repeatedly measure the same individuals in an area), specifically we can use years of education for an invariant cohort as an instrument to get a more stable estimate of average IWI in an area. The idea is that by using an invariant cohort we detect differences between the samples and control for such differences. We want persons that are young enough to included when the last surveys are made (max 65 years old in 2024) and old enough to have finished their education when the first surveys were made (at least 25 years in 2000), which gives that they should be born between 1960 and 1976.
-
-Consider the area 24.Luanda.Viana.Viana Sede in Angola, from which we have five measurements (or four, depending on how you count since one survey was collected over two years, 2015 and 2016). In addition to the average IWI for each year, also calculate the average education for a cohort that is invariant over time.
-
 <<iwi.0>>=
 library(xtable); library(data.table);
 library(globallivingconditions); library(lme4)
@@ -326,134 +370,6 @@ pred_grid[, (c("year", "iwi_pred_scaled")) := NULL, ]
 
 @
 
-<<iwi.0.5, results = "asis">>=
-temp.f.2 <- function(my.dt, pred_grid, output = "table", my.area, my.label = "foo") {
-
-    alternative.dt <- pred_grid[area.name == my.area & year.of.interview %in% my.dt[area.name == my.area, year.of.interview], list(area.name, year.of.interview, predicted.iwi.lme4 = iwi_pred), ]
-    
-    foo <- my.dt[area.name == my.area, ]
-    foo[, area.name := NULL, ]
-    foo[, in.the.cohort := (year.of.interview - age) > 1959 &
-                     (year.of.interview - age) < 1977, ]
-    bar <- foo[, list(average.iwi = mean(iwi, na.rm = TRUE)), by = year.of.interview]
-    baz <- foo[in.the.cohort == TRUE, list(average.education = mean(education.in.years, na.rm = TRUE)), by = year.of.interview]
-    bal <- merge(bar, baz)
-    if(output == "table"){
-        print(xtable(bal, digits = c(0, 0, 1, 1), caption = paste("Average IWI in", my.area, "for the years of DHS observations. The education average is only based on persons born 1960-1976, while the IWI average is based on all persons in the DHS. IWI correlates with Eduacation average, but Education average in the population for this cohort should be almost invariant. Changes in education is thus a good measure of the sampling noise in the DHS. A simple regression that does not account for this sampling noise would fail to account for the fact that average education is particular low at the first measurement (year 2006) which also saw the lowest average IWI."), label = my.label), include.rownames = FALSE, booktabs = TRUE)
-    } else {
-        my.fit <- lm(average.iwi ~ year.of.interview + average.education, data = bal)
-        bal$predicted.iwi <- predict(my.fit, newdata = data.frame(average.education = rep(mean(bal$average.education), nrow(bal)), year.of.interview = bal$year.of.interview))
-        my.fit.simple <- lm(average.iwi ~ year.of.interview, data = bal)
-        bal$predicted.iwi.simple <- predict(my.fit.simple)
-        
-        plot(bal$year.of.interview, bal$average.iwi, type = "b", ylab = "average IWI", xlab = "")
-        lines(bal$year.of.interview, bal$predicted.iwi.simple, type = "b", col = "red")
-        lines(bal$year.of.interview, bal$predicted.iwi, type = "b", col = "green")
-        lines(alternative.dt$year.of.interview, alternative.dt$predicted.iwi.lme4, type = "b", col = "orange")
-        par(xpd = TRUE)  # allow drawing outside plot region
-        legend(x="top",
-               inset = c(0, -0.15),     # move below plot
-               ncol = 2,
-               bty = "n",
-               legend = c("observed average", "A. simple regression", "B .regression with control for education", "C. hierarchical regression with education"),
-               col = c("black", "red", "green", "orange"), lwd = 1, cex = 0.8)
-    }
-}
-
-temp.f.2(my.dt, pred_grid, output = "table", my.area = "24.Luanda.Viana.Viana Sede", my.label = "tab:iwi1")
-temp.f.2(my.dt, pred_grid, output = "table", my.area = "24.Luanda.Cacuaco.Funda", my.label = "tab:iwi2")
-
-@ 
-
-The changes in education for this cohort should just be sampling noise, i.e. for years with higher values the sampled households happen to be a bit more wealthy (assuming higher education in general leads to slightly higher level of wealth), which leads to an overestimation of the true average IWI, and years with particularly low average education in the sampled members of the cohort, we assume the average IWI is underestimated.
-
-We can estimate IWI in at least three different ways:
-
-\begin{itemize}
-\item A: Simple regression based only on year and data in the area.
-\item B: Bivarate regression based on year and average education, but still only using data points from the area.
-\item C: Hierarchical regression (mixed model) that apply shrinkage to the mean.
-\end{itemize}
-
-Below is the mathematical notation for each of these three models.
-
-\begin{align}
-y_{it} &= \beta_0 + \beta_1 \textrm{year}_{it} + \varepsilon_{it} \tag{A} \\[1em]
-y_{it} &= \beta_0 + \beta_1 \textrm{year}_{it} + \beta_2 \textrm{education}_{it} + \varepsilon_{it} \tag{B} \\[1em]
-y_{it} &= \beta_0 + \beta_1 \textrm{year}_{it} + \beta_2 \textrm{education}_{it} \notag \\
-       &\quad + u_{0i} + u_{1i} \, \textrm{year}_{it} \notag \\
-       &\quad + v_{0r(i)} + v_{1r(i)} \, \textrm{year}_{it} \notag \\
-       &\quad + w_{0c(i)} + w_{1c(i)} \, \textrm{year}_{it} \notag \\
-       &\quad + \varepsilon_{it} \tag{C}
-\end{align}
-\noindent
-Model C includes random intercepts and random slopes for area, region, and country. For area, the covariance between the random intercept and random slope is constrained to zero. This is because we do not have enough data points to support a model that learns the relationship between the area intercept and the area slope; we only have enough data to fit an intercept and a slope for each area. To also answer the question: does the slope tend to be smaller when the intercept is high, is asking too much of the data.
-\[
-u_{0i} \sim \mathcal{N}(0,\sigma^2_{u0}), 
-\qquad
-u_{1i} \sim \mathcal{N}(0,\sigma^2_{u1}),
-\qquad
-\operatorname{Cov}(u_{0i},u_{1i}) = 0.
-\]
-While for region and country, the random intercepts and slopes are allowed to covary. 
-\begin{align*}
-% (u_{0i}, u_{1i}) &\sim \mathcal{N}(0, \Sigma_{\textrm{area}}) \notag \\
-(v_{0r}, v_{1r}) &\sim \mathcal{N}(0, \Sigma_{\textrm{region}}) \notag \\
-(w_{0c}, w_{1c}) &\sim \mathcal{N}(0, \Sigma_{\textrm{country}}) \notag \\
-  \varepsilon_{it} &\sim \mathcal{N}(0, \sigma^2)
-\end{align*}
-
-
-% with correlated intercepts and slopes so that the variance-covariance matrices for the intercept and slope of area, region and country respectively are defined as follows (note that for area, the co-variance is set to zero).
-
-$
-\Sigma_{\text{area}} =
-\begin{pmatrix}
-\sigma^2_{u0} & 0 \\
-0 & \sigma^2_{u1}
-\end{pmatrix};
-\Sigma_{\text{region}} =
-\begin{pmatrix}
-\sigma^2_{v0} & \sigma_{v0,v1} \\
-\sigma_{v0,v1} & \sigma^2_{v1}
-\end{pmatrix};
-\Sigma_{\text{country}} =
-\begin{pmatrix}
-\sigma^2_{w0} & \sigma_{w0,w1} \\
-\sigma_{w0,w1} & \sigma^2_{w1}
-\end{pmatrix}
-$
-
-lme4 extends Wilkinson–Rogers formula notation by adding random-effects terms of the form (random-effect expression | grouping factor), including syntax for correlated and uncorrelated random intercepts and slopes, and in this notation the model reads:
-
-<<model.explicit, eval=FALSE, echo = TRUE>>=
-formula(iwi ~ year + education + (1 | area.name) + (0 + year | area.name) +
-                       (year | top.level.region) + (year | country))
-@
-
-In stata this would be achieved with the following code:
-
-<<model.explicit.stata, engine = "stata", eval=FALSE, echo = TRUE>>=
-mixed iwi year education ///
-    || country: year, covariance(unstructured) ///
-    || top_level_region: year, covariance(unstructured) ///
-    || area_name: year, covariance(independent) ///
-    reml
-@ 
-
-<<iwi, fig.cap = "Different ways of estimating average IWI in the area '24.Luanda.Viana.Viana Sede'. Lines A and B are only based on data in table \\ref{tab:iwi1}, while line C is based on hierarchical regression that takes the average IWI in the top region and the country into account.", dev = "png", dpi = 200, fig.width = 7, fig.height = 4.5>>=
-temp.f.2(my.dt, pred_grid, output = "figure", my.area = "24.Luanda.Viana.Viana Sede")
-@
-
-<<iwi-fig-area-2, fig.cap = "Different ways of estimating average IWI in the area '24.Luanda.Cacuaco.Funda'. Lines A and B are only based on data in table \\ref{tab:iwi2}, while line C is based on hierarchical regression that takes the average IWI in the top region and the country into account.", dev = "png", dpi = 200, fig.width = 7, fig.height = 4.5>>=
-my.dt.bak <- my.dt
-temp.f.2(my.dt, pred_grid, output = "figure", my.area = "24.Luanda.Cacuaco.Funda")
-@ 
-
-Considering again the area in Angola shown in Table \ref{tab:iwi1}, Figure \ref{fig:iwi} shows observed data together with predictions for each of the three models. The red, orange and green lines are all based on regression analysis: the red line represents a regression with a single independent variable, ``year.of.interview'', while the green line is based on both ``year.of.interview'', and ``education.in.years'' (see table \ref{tab:iwi1}). The orange line should in general be preferable since it uses the signal from not only this area but also other areas in the same top level region and in the same country. However, that signal will also shrink the differences between areas and predict values of IWI that make the areas appear more similar than they would have if the predictions for one area was completely independent of predictions for nearby areas. So, it comes with a price : stability is the gain, and decreased area differences is the price.
-
-\texttt{pred\_grid} is the full object, now create \texttt{living.conditions.dt} with only \texttt{area.name}, \texttt{country}, \texttt{top level region}, \texttt{year of interview} and the \texttt{predicted average IWI value}, thus droping the variable average education in years variable.
-
 <<merge.data>>=
 library(data.table)
 living.conditions.dt <- pred_grid[which(year.of.interview %in% seq(from=2000, to=2020, by=5)), list(area.name, country, top.level.region, year.of.interview, iwi = iwi_pred), ]
@@ -470,7 +386,7 @@ my.dt <- merge(deforestation.dt, living.conditions.dt, all.x = FALSE, all.y = TR
 my.dt$forestation_change_year <- NULL
 @
 
-<<merge.data.show, results = "asis">>=
+<<merge.data.show, results = "asis", eval = FALSE>>=
 library(xtable)
 print(xtable(head(my.dt[, list(`Name of area` = area.name, Year = year.of.interview, FC = forestation_change, IWI = iwi), ]),
              digits = c(0, 0, 0, 2, 1),
@@ -479,7 +395,7 @@ print(xtable(head(my.dt[, list(`Name of area` = area.name, Year = year.of.interv
 
 @ 
 
-Add GNI-data from a previous imputation. For another article I produced a high quality data set with imputed GNI data. Here, just re-use those data.
+% Add GNI-data from a previous imputation. For another article I produced a high quality data set with imputed GNI data. Here, just re-use those data.
 
 <<add.gni>>=
 ## Reconcile differences in the names of the Indian states.
@@ -508,195 +424,22 @@ my.dt <- merge(my.dt, gni)
 
 @
 
-\section{Modelling deforestation}
-
-The first models to test are two simple models with only GNI as the focal variable, first included as a linear and a squared term, and, in the second model, also with a cubic term. We also include a dummy term for year, where year 2000 will be the reference level, so one dummy for each of 2005, 2010 and 2015.
-
-\begin{align}
-  \text{forest\_coverage\_change}_{t+5} &= \beta_0 \text{GNI}_{t} + \beta_1 \text{GNI}_{t}^{2} \notag \\
-                                        &\quad + \beta_2 \text{year}_{2005} + \beta_3 \text{year}_{2010} + \beta_4 \text{year}_{2015} \notag \\
-                                        &\quad + w_{0c(i)} + \varepsilon_{it} \tag{1} \\
-  \text{forest\_coverage\_change}_{t+5} &= \beta_0 \text{GNI}_{t} + \beta_1 \text{GNI}_{t}^{2} + \beta_2 \text{GNI}_{t}^{3} \notag \\
-                                        &\quad + \beta_3 \text{year}_{2005} + \beta_4 \text{year}_{2010} + \beta_5 \text{year}_{2015} \notag \\
-                                        &\quad + w_{0c(i)} + \varepsilon_{it} \tag{2}
-\end{align}
-\noindent
-where the random term (the intercept for country) is specified as:
-
-$$ w_{0c} \sim \mathcal{N}(0, \sigma_{\textrm{country}}^2) $$
-
-% When predicting, all variables need a value so the variable year was set to 2010. Figure \ref{fig:plot-model-1a} shows the predicted forest change for a given value with GNI, including uncertainty.
-
-<<plot-model-1a, fig.cap = "Forest cover change as a function of GNI.", fig.width = 5, fig.height = 3, fig.align = "center", eval = FALSE>>=
-gdp_seq <- seq(min(my.dt$gdp.log), max(my.dt$gdp.log), length.out = 100)
-
-# Manually construct model matrix
-X_new <- cbind(
-  `(Intercept)` = 1,
-  gdp.log = gdp_seq,
-  `I(gdp.log^2)` = gdp_seq^2,
-  `factor(year.of.interview)2005` = 0,
-  `factor(year.of.interview)2010` = 1,  # choose reference year
-  `factor(year.of.interview)2015` = 0
-)
-
-beta <- fixef(my.fit.deforestation)
-pred <- as.vector(X_new %*% beta)
-vcov_mat <- vcov(my.fit.deforestation)
-
-se <- sqrt(diag(X_new %*% vcov_mat %*% t(X_new)))
-upper <- pred + 1.96 * se
-lower <- pred - 1.96 * se
-
-library(ggplot2)
-library(dplyr)
-
-plot.df <- data.frame(
-  gdp.log = gdp_seq,
-  pred = pred,
-  lower = lower,
-  upper = upper,
-  GNI = exp(gdp_seq)
-)
-
-country.deviances <- as.data.frame(ranef(my.fit.deforestation))[c("grp", "condval", "condsd")]
-colnames(country.deviances) <- c("country", "point.estimate.for.random.intercept", "sd.for.random.intercept")
-country.df <- merge(country.deviances, my.dt[year.of.interview == 2010, list(gdp.log = unique(gdp.log)), by = country])
-
-country.df$fixed_part <- approx(
-  x = plot.df$gdp.log,
-  y = plot.df$pred,
-  xout = country.df$gdp.log
-)$y
-
-country.df <- country.df %>%
-  mutate(
-    GNI = exp(gdp.log),
-    pred = fixed_part + point.estimate.for.random.intercept,
-    ymin = pred - 1.96 * sd.for.random.intercept,
-    ymax = pred + 1.96 * sd.for.random.intercept
-  )
-
-ggplot(plot.df, aes(x = GNI, y = pred)) +
-    geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
-    geom_line() +
-    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.8) +
-    scale_x_log10() +
-    labs(x = "GNI", y = "Predicted forestation change") +
-    theme_minimal() + 
-    theme(
-        axis.text.y = element_text(size = 7),
-        axis.title.y = element_text(size = 8),
-        axis.text.x = element_text(size = 7),
-        axis.title.x = element_text(size = 8)
-        )
-
-@
-% Figure \vref{fig:plot-model-1b} adds the predicted forest change for all countries in the study, including uncertainty.
-
-<<plot-model-1b, fig.cap = "Forest cover change as a function of GNI with estimated country averages.", fig.width = 3, fig.height = 5, fig.align = "center", eval=FALSE>>=
-library(ggplot2)
-
-ggplot(plot.df, aes(x = GNI, y = pred)) +
-    geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
-    geom_line() +
-    geom_point(
-        data = country.df,
-        aes(x = GNI, y = pred),
-        size = 1.5,
-        alpha = 0.6,
-        inherit.aes = FALSE
-    ) +
-    geom_errorbar(
-        data = country.df,
-        aes(x = GNI, ymin = ymin, ymax = ymax),
-        width = 0.05,
-        alpha = 0.4,
-        inherit.aes = FALSE
-    ) + 
-    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.8) +
-    scale_x_log10() +
-    labs(x = "GNI", y = "Predicted forestation change") +
-    theme_minimal() + 
-    theme(
-        axis.text.y = element_text(size = 7),
-        axis.title.y = element_text(size = 8),
-        axis.text.x = element_text(size = 7),
-        axis.title.x = element_text(size = 8)
-        )
-
-@
-
 <<kuznet-0>>=
 my.dt[, year := factor(year.of.interview), ]
 my.formula.1 <- formula(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country))
 my.formula.2 <- formula(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country))
 @
 
-This is the code needed to fit the first model to data with lmer in R.
+% This is the code needed to fit the first model to data with lmer in R.
 
-<<show.formula.1, echo = TRUE>>=
+<<show.formula.1, echo = FALSE>>=
 formula(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country))
 @
 
-And here is the code for the second model:
+% And here is the code for the second model:
 
-<<show.formula.2, echo = TRUE>>=
+<<show.formula.2, echo = FALSE>>=
 formula(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country))
-@
-
-<<kuznet-1-effects, fig.cap = "Forest cover change as a function of GNI, including a quadratic term for GNI.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-library(lattice); library(latticeExtra)
-library(effects)
-library(lme4)
-
-my.fit.deforestation.2 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt)
-
-## Set the range of GDP values we want visualised explicitly, Effect() will not by default restrict it enough.
-gdp_range <- range(my.dt$gdp.log, na.rm = TRUE)
-my.eff <- Effect("gdp.log", my.fit.deforestation.2,
-                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
-
-## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
-x_ticks <- c(1000, 2000, 4000, 8000, 12000)
-p <- plot(my.eff,
-          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
-                      y = list(cex = 0.5)),
-          main = "", ylim = c(-1.95, 1.75))
-p <- update(p,
-            xlab = list(label="GNI", cex = 0.8),
-            ylab = list(label="Predicted forestation change", cex = 0.8),
-            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
-p + 
-    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
-
-@
-
-<<kuznet-3-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear, quadratic and a cubic term. Based on change in relation to the state at t0.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.3 <- lmer(forestation_change ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt)
-
-## Set the range of GDP values we want visualised explicitly, Effect() will not by default restrict it enough.
-gdp_range <- range(my.dt$gdp.log, na.rm = TRUE)
-my.eff <- Effect("gdp.log", my.fit.deforestation.3,
-                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
-
-## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
-x_ticks <- c(1000, 2000, 4000, 8000, 12000)
-p <- plot(my.eff,
-          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
-                      y = list(cex = 0.5)),
-          main = "", ylim = c(-1.95, 1.75))
-p <- update(p,
-            xlab = list(label="GNI", cex = 0.8),
-            ylab = list(label="Predicted forestation change", cex = 0.8),
-            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
-p + 
-    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
-
 @
 
 <<fcc.def, echo = FALSE>>=
@@ -746,121 +489,6 @@ colnames(sample.2) <- c("Top level Region", "Area name", "year", "IWI", "GNI.log
 
 @
 
- % latex table generated in R 4.5.1 by xtable 1.8-4 package
- % Tue Sep  1 17:12:40 2026
- \begin{table}[ht]
-   \centering
-
-\resizebox{\textwidth}{!}{%  
-   
-   
- \begin{tabular}{rllrrrrrr}
-   \toprule
-  & Top level Region & Area name & year & IWI & GNI.log & FC & cum.FCC & F5YFCC \\
-   \midrule
- 1 & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & 0.00 & -0.17 \\
-   2 & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.17 & -0.48 \\
-   3 & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & -0.65 & 0.28 \\
-   4 & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.37 & -0.02 \\
-   5 & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2020 & 31.23 & 7.57 & 7.82 & -0.39 &  \\
-   6 & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & 0.00 & -0.56 \\
-   7 & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.56 & -0.24 \\
-   8 & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.80 & -0.43 \\
-   9 & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -1.23 & -0.10 \\
-   10 & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2020 & 25.67 & 7.57 & 18.19 & -1.34 &  \\
-   11 & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & 0.00 & -0.39 \\
-   12 & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.39 & -0.38 \\
-   13 & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2010 & 23.16 & 7.41 & 15.17 & -0.77 & -0.60 \\
-   14 & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2015 & 26.49 & 7.62 & 14.58 & -1.37 & -0.38 \\
-   15 & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2020 & 29.82 & 7.57 & 14.20 & -1.74 &  \\
-   16 & Zimbabwe.Midlands & 716.Midlands.Gweru & 2000 & 32.88 & 7.26 & 4.74 & 0.00 & -0.17 \\
-   17 & Zimbabwe.Midlands & 716.Midlands.Gweru & 2005 & 36.19 & 7.03 & 4.57 & -0.17 & -0.08 \\
-   18 & Zimbabwe.Midlands & 716.Midlands.Gweru & 2010 & 39.51 & 7.41 & 4.49 & -0.25 & -0.12 \\
-   19 & Zimbabwe.Midlands & 716.Midlands.Gweru & 2015 & 42.83 & 7.62 & 4.37 & -0.37 & 0.02 \\
-   20 & Zimbabwe.Midlands & 716.Midlands.Gweru & 2020 & 46.14 & 7.57 & 4.39 & -0.35 &  \\
-   21 & Zimbabwe.Midlands & 716.Midlands.Kwekwe & 2000 & 32.57 & 7.26 & 16.72 & 0.00 & -0.46 \\
-   22 & Zimbabwe.Midlands & 716.Midlands.Kwekwe & 2005 & 35.89 & 7.03 & 16.25 & -0.46 & -0.29 \\
-   23 & Zimbabwe.Midlands & 716.Midlands.Kwekwe & 2010 & 39.21 & 7.41 & 15.96 & -0.75 & -0.24 \\
-   24 & Zimbabwe.Midlands & 716.Midlands.Kwekwe & 2015 & 42.53 & 7.62 & 15.72 & -1.00 & 0.13 \\
-   25 & Zimbabwe.Midlands & 716.Midlands.Kwekwe & 2020 & 45.86 & 7.57 & 15.85 & -0.87 &  \\
-   26 & Zimbabwe.Midlands & 716.Midlands.Mberengwa & 2000 & 16.49 & 7.26 & 23.78 & 0.00 & -0.11 \\
-   27 & Zimbabwe.Midlands & 716.Midlands.Mberengwa & 2005 & 19.81 & 7.03 & 23.66 & -0.11 & 0.01 \\
-   28 & Zimbabwe.Midlands & 716.Midlands.Mberengwa & 2010 & 23.14 & 7.41 & 23.67 & -0.10 & -0.04 \\
-   29 & Zimbabwe.Midlands & 716.Midlands.Mberengwa & 2015 & 26.46 & 7.62 & 23.64 & -0.14 & 0.01 \\
-   30 & Zimbabwe.Midlands & 716.Midlands.Mberengwa & 2020 & 29.79 & 7.57 & 23.65 & -0.13 &  \\
-   31 & Zimbabwe.Midlands & 716.Midlands.Shurugwi & 2000 & 28.01 & 7.26 & 17.24 & 0.00 & -0.15 \\
-   32 & Zimbabwe.Midlands & 716.Midlands.Shurugwi & 2005 & 31.36 & 7.03 & 17.09 & -0.15 & -0.23 \\
-   33 & Zimbabwe.Midlands & 716.Midlands.Shurugwi & 2010 & 34.70 & 7.41 & 16.85 & -0.39 & -0.30 \\
-   34 & Zimbabwe.Midlands & 716.Midlands.Shurugwi & 2015 & 38.05 & 7.62 & 16.55 & -0.69 & -0.00 \\
-   35 & Zimbabwe.Midlands & 716.Midlands.Shurugwi & 2020 & 41.39 & 7.57 & 16.55 & -0.69 &  \\
-   36 & Zimbabwe.Midlands & 716.Midlands.Zvishavane & 2000 & 24.59 & 7.26 & 20.48 & 0.00 & -0.16 \\
-   37 & Zimbabwe.Midlands & 716.Midlands.Zvishavane & 2005 & 27.95 & 7.03 & 20.32 & -0.16 & -0.10 \\
-   38 & Zimbabwe.Midlands & 716.Midlands.Zvishavane & 2010 & 31.30 & 7.41 & 20.23 & -0.26 & -0.07 \\
-   39 & Zimbabwe.Midlands & 716.Midlands.Zvishavane & 2015 & 34.66 & 7.62 & 20.16 & -0.32 & 0.01 \\
-   40 & Zimbabwe.Midlands & 716.Midlands.Zvishavane & 2020 & 38.02 & 7.57 & 20.17 & -0.31 &  \\
-    \bottomrule
- \end{tabular}
-
-}
- 
- \caption{The data points for a top level region in the merged dataset. 'IWI', predicted average IWI based on observed IWI and education in years for a common cohort'; 'FC' = 'Forest Coverage'; 'cum.FCC' = 'Cummulative Forest Coverage Change'; 'F5YFCC' = 'Forward-looking \
- 5 years Forest Coverage Change, ie, the FCC for the coming 5 years after this year. Not Available for the last observation in each area}
- \label{tab:def1}
- \end{table}
-
-% latex table generated in R 4.5.1 by xtable 1.8-8 package
-% Tue Sep  1 12:52:54 2026
-% \begin{table}[ht]
-% \centering
-% \begin{tabular}{rlllrrrrrr}
-%   \toprule
-%  & country & top.level.region & area.name & year & iwi & gdp.log & forest\_coverage & cummulative\_forestation\_change & forestation\_change\_5yr\_forward \\ 
-%   \midrule
-% 1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & 0.00 & -0.17 \\ 
-%   2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.17 & -0.48 \\ 
-%   3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & -0.65 & 0.28 \\ 
-%   4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.37 & -0.02 \\ 
-%   5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2020 & 31.23 & 7.57 & 7.82 & -0.39 &  \\ 
-%   6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & 0.00 & -0.56 \\ 
-%   7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.56 & -0.24 \\ 
-%   8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.80 & -0.43 \\ 
-%   9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -1.23 & -0.10 \\ 
-%   10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2020 & 25.67 & 7.57 & 18.19 & -1.34 &  \\ 
-%   11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & 0.00 & -0.39 \\ 
-%   12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.39 & -0.38 \\ 
-%    \bottomrule
-% \end{tabular}
-% \caption{The data points for a top level region in the merged dataset. 'IWI', predicted average IWI based on observed IWI and education in years for a common cohort'; 'FC' = 'Forest Coverage'; 'cum.FCC' = 'Cummulative Forest Coverage Change'; 'F5YFCC' = 'Forward-looking 5 years Forest Coverage Change, ie, the FCC for the coming 5 years after this year. Not Available for the last observation in each area}
-% \end{table}
-
-% % latex table generated in R 4.5.1 by xtable 1.8-4 package
-% % Fri May 29 00:48:35 2026
-% \begin{table}[ht]
-%   \centering
-% \resizebox{\textwidth}{!}{%  
-% \begin{tabular}{rlllrrrrr}
-%   \toprule
-%  & Country & Top level Region & Area name & year & IWI & GNI.log & FC & FCC \\ 
-%   \midrule
-% 1 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2000 & 17.86 & 7.26 & 8.21 & -0.17 \\ 
-%   2 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2005 & 21.20 & 7.03 & 8.04 & -0.48 \\ 
-%   3 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2010 & 24.55 & 7.41 & 7.56 & 0.28 \\ 
-%   4 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Chirumhanzu & 2015 & 27.89 & 7.62 & 7.84 & -0.02 \\ 
-%   5 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2000 & 12.32 & 7.26 & 19.53 & -0.56 \\ 
-%   6 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2005 & 15.66 & 7.03 & 18.96 & -0.24 \\ 
-%   7 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2010 & 19.00 & 7.41 & 18.72 & -0.43 \\ 
-%   8 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe North & 2015 & 22.33 & 7.62 & 18.29 & -0.10 \\ 
-%   9 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2000 & 16.50 & 7.26 & 15.94 & -0.39 \\ 
-%   10 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2005 & 19.83 & 7.03 & 15.55 & -0.38 \\ 
-%   11 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2010 & 23.16 & 7.41 & 15.17 & -0.60 \\ 
-%   12 & Zimbabwe & Zimbabwe.Midlands & 716.Midlands.Gokwe South & 2015 & 26.49 & 7.62 & 14.58 & -0.38 \\ 
-%    \bottomrule
-% \end{tabular}
-% }
-% \caption{Some data points for areas in a top level region in the merged dataset. 'FC' = 'Forest Coverage'; 'FCC' = 'Forest Coverage Change'.} 
-% \label{tab:def1}
-% \end{table}
-
 %% Adding Trade data from the FAO
 %% input: "FAOSTAT_data_2011-2024.csv" and "FAOSTAT_data_2000-2010.csv" to be in the path
 %% "~/mnt/poverty/media/sf_Our_data/Hans/Onedrive/University of Gothenburg/Deforestation and poverty - General/Data/Trade data from FAO/"
@@ -874,86 +502,6 @@ library(data.table)
 setkey(my.dt.clean, country.code, year)
 fao.dt <- merge(my.dt.clean, exports)
 @ 
-
-Using the forest coverage change defined in relation to the previous measurement rather than at $t_{0}$ we get the following predictions (in this case the quadratic model was no worse than the model with a qubic term, so the following is based on a model with only a linear and a quadratic term for GNI).
-
-
-<<kuznet-4b-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state, not the state at t0.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.4 <- lmer(forestation_change_5yr_forward ~ gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
-my.fit.deforestation.5 <- lmer(forestation_change_5yr_forward ~ gdp.log + I(gdp.log^2) + I(gdp.log^3) + year + (1 | country), data = my.dt.clean)
-my.eff <- Effect("gdp.log", my.fit.deforestation.4,
-                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
-## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
-x_ticks <- c(1000, 2000, 4000, 8000, 12000)
-p <- plot(my.eff,
-          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
-                      y = list(cex = 0.5)),
-          main = "", ylim = c(-1.3, 0.6))
-p <- update(p,
-            xlab = list(label="GNI", cex = 0.8),
-            ylab = list(label="Predicted forestation change", cex = 0.8),
-            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
-p + 
-    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
-
-@ 
-
-Now, include the forest coverage at time $t$ as a control.
-
-<<kuznet-5-effects, fig.cap = "Predicted forest cover change the next five years as a function of GNI, including a linear and a quadratic term, based on change in relation to the previous state. Including control for forest coverage at time $t$.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-library(lme4)
-my.fit.deforestation.6 <- lmer(forestation_change_5yr_forward ~ forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
-
-my.eff <- Effect("gdp.log", my.fit.deforestation.6,
-                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
-## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
-x_ticks <- c(1000, 2000, 4000, 8000, 12000)
-p <- plot(my.eff,
-          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
-                      y = list(cex = 0.5)),
-          main = "", ylim = c(-1.3, 0.6))
-p <- update(p,
-            xlab = list(label="GNI", cex = 0.8),
-            ylab = list(label="Predicted forestation change", cex = 0.8),
-            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
-p + 
-    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
-
-@
-
-<<kuznet-7-effects, fig.cap = "Predicted forest cover change the next five years ($t+5$) as a function of GNI, including a linear and a quadratic term; average IWI; control for forest coverage at time $t$ and a random intercept term for country and a random intercept term for the top level region.", fig.width = 5, fig.height = 3, fig.align = "center">>=
-my.fit.deforestation.7 <- lmer(forestation_change_5yr_forward ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
-my.fit.deforestation.7b <- lmer(forestation_change_5yr_forward ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country) + (1 | top.level.region), data = my.dt.clean)
-
-my.eff <- Effect("gdp.log", my.fit.deforestation.7b,
-                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
-## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
-x_ticks <- c(1000, 2000, 4000, 8000, 12000)
-p <- plot(my.eff,
-          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
-                      y = list(cex = 0.5)),
-          main = "", ylim = c(-1.3, 0.6))
-p <- update(p,
-            xlab = list(label="GNI", cex = 0.8),
-            ylab = list(label="Predicted forestation change", cex = 0.8),
-            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
-p + 
-    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
-    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
-
-@ 
-
-
-\section{A static data set: IWI trend and post-deforestation land use}
-
-The predicted IWI in \texttt{pred\_grid} is linear in year for every area, so the four (or five) yearly observations per area carry no more information than two numbers: the level in year 2000 and the slope. Here we construct one row per area with those two numbers, and merge it with the land cover transitions 2000--2020 computed by \texttt{transitions-per-area.R}. We take IWI directly from \texttt{pred\_grid} rather than from \texttt{my.dt.clean}, since year 2020 is not present in \texttt{my.dt.clean}.
-
-Since the model shrinks area-specific slopes towards the slope of the top level region and the country, the area-specific deviation of the slope (\texttt{iwi\_slope\_area}, the random slope for the area) is the part of the IWI trend that local conditions such as deforestation can explain. For areas with a single interview year this deviation is zero by construction, so we also record the number of years with interviews and the first and last interview year for each area.
 
 <<iwi.static>>=
 library(data.table); library(lme4)
@@ -996,9 +544,8 @@ saveRDS(static.dt, "paper_II_static.RDS")
 write.csv(static.dt, file = "paper_II_static.csv", row.names = FALSE)
 @
 
-The merged data set contains \Sexpr{nrow(static.dt)} areas out of \Sexpr{nrow(iwi.static)} areas with predicted IWI. Table \ref{tab:n-surveys} shows how many interview years the IWI trend is based on.
 
-<<n.surveys.table, results = "asis">>=
+<<n.surveys.table, results = "asis", include = FALSE>>=
 library(xtable)
 n.surveys.tab <- static.dt[, list(areas = .N,
                                   `first (median)` = median(first_survey),
@@ -1012,13 +559,6 @@ print(xtable(n.surveys.tab,
 @
 
 
-\section{Deforestation by type and the IWI trend}
-
-The variance of the area-specific random slope in \texttt{my.fit.iwi} is estimated to be close to zero (the standard deviation of \texttt{iwi\_slope\_area} across areas is below 0.01 IWI units per year), so the predicted IWI trend of an area is in practice the trend of its top level region and country. Using it as the outcome in a second step would set any association with local deforestation to zero before the analysis starts.
-
-Instead, the deforestation variables enter the IWI model directly, as interactions with year. The interaction terms are fixed effects and are not shrunk. Each area-year average is weighted by the number of respondents it is based on, which handles the fact that different households and villages are sampled in each survey: noise in the outcome reduces precision but does not bias the estimates. Top level regions and countries have their own random intercepts and slopes, so the interaction terms are identified mainly by comparing areas within the same top level region. The share of the land area that was forest in 2000 is included, also interacted with year, so that the comparison is between areas with the same initial forest cover.
-
-We estimate three models. Model 1 includes the three deforestation paths A, C and E and the initial forest cover. Forest that becomes built-up is likely to be a marker of urban growth rather than a consequence of deforestation as such, and cropland expansion may matter regardless of what it replaced. Model 2 therefore adds expansion of built-up land and of cropland on land that was \emph{not} forest in 2000, and the share of urban respondents. Model 2 also adds regrowth, land that was not forest in 2000 but is forest in 2020: B (short vegetation $\to$ forest) and D (cropland $\to$ forest). Without them, an area with shifting cultivation, where forest is cleared in one place and grows back in another, would appear to have only deforestation. F (built-up $\to$ forest) is practically absent and is left out. All variables are interacted with year. Model 3 is model 2 restricted to areas whose interview years span the study period: at least one interview in 2005 or earlier and at least one in 2015 or later.
 
 <<iwi.deforestation.data>>=
 library(data.table); library(lme4)
@@ -1057,9 +597,7 @@ bal2[, w := n_respondents / mean(n_respondents)]
 bal2.span <- bal2[first_survey <= 2005 & last_survey >= 2015]
 @
 
-Table \ref{tab:area-vars} shows the distribution of the area-level variables. Forest loss by each path is typically a small share of the land area, and the paths differ in spread, so the results below are expressed per standard deviation.
-
-<<area.vars.table, results = "asis">>=
+<<area.vars.table>>=
 library(xtable)
 var.labels <- c(forest_share_2000 = "forest cover in 2000 (\\%)",
                 pct_A = "A: forest $\\to$ short vegetation (\\%)",
@@ -1079,12 +617,12 @@ area.vars.tab <- rbindlist(lapply(names(var.labels), function(v) {
                p90 = quantile(x, 0.9), max = max(x))
 }))
 setnames(area.vars.tab, "variable", "")
-print(xtable(area.vars.tab,
+tab_area_vars <- list(x = xtable(area.vars.tab,
              caption = paste0("Area-level variables, ", format(nrow(area.level), big.mark = ","),
                               " areas. Transitions 2000--2020 as per cent of the land area in 2000."),
              label = "tab:area-vars", digits = c(0, 0, 2, 2, 2, 2, 2)),
-      include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
-      sanitize.text.function = identity, sanitize.colnames.function = identity)
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
 @
 
 <<iwi.deforestation.models>>=
@@ -1098,9 +636,7 @@ fit.II.2 <- lmer(f2, data = bal2, weights = w, control = ctrl)
 fit.II.3 <- lmer(f2, data = bal2.span, weights = w, control = ctrl)
 @
 
-The models use \Sexpr{format(nrow(bal2), big.mark = ",")} area-year observations from \Sexpr{format(uniqueN(bal2$area.name), big.mark = ",")} areas (models 1 and 2), based on \Sexpr{format(sum(bal2$n_respondents), big.mark = ",")} respondents, and \Sexpr{format(nrow(bal2.span), big.mark = ",")} area-year observations from \Sexpr{format(uniqueN(bal2.span$area.name), big.mark = ",")} areas (model 3). Table \ref{tab:iwi-deforestation} shows the interaction terms with year, converted from the z-scaled metric of the models to IWI units per year, per standard deviation of each variable.
-
-<<iwi.deforestation.table, results = "asis">>=
+<<iwi.deforestation.table>>=
 ## from scaled iwi per scaled year to IWI units per year
 k <- attr(bal$iwi, "scaled:scale") / attr(bal$year, "scaled:scale")
 
@@ -1117,16 +653,14 @@ fits <- list(`Model 1` = fit.II, `Model 2` = fit.II.2, `Model 3` = fit.II.3)
 iwi.def.tab <- data.table(variable = var.labels,
                           sapply(fits, function(f) sapply(names(var.labels), function(v) est.ci(f, v))))
 setnames(iwi.def.tab, "variable", "")
-print(xtable(iwi.def.tab,
+tab_iwi_deforestation <- list(x = xtable(iwi.def.tab,
              caption = "Difference in the IWI trend (IWI units per year) associated with one standard deviation more of each variable, with 95\\% confidence intervals. Interaction terms with year from linear mixed models of average IWI per area and interview year, weighted by the number of respondents, with random intercepts for area and random intercepts and slopes for top level region and country, controlling for education. Model 2 adds regrowth (B and D), expansion of built-up land and cropland on non-forest land and the share of urban respondents. Model 3 is model 2 restricted to areas with interviews both in or before 2005 and in or after 2015.",
              label = "tab:iwi-deforestation", align = c("l", "l", "r", "r", "r")),
-      include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
-      sanitize.text.function = identity, sanitize.colnames.function = identity)
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
 @
 
-Research question 2 asks whether it matters what replaced the forest. Holding the total forest loss constant, the contrast C $-$ A compares an area where one percentage point of its land went from forest to cropland with an area where the same land went from forest to short vegetation. Table \ref{tab:contrast} shows this contrast, and the contrast E $-$ A, per percentage point of the land area.
-
-<<iwi.deforestation.contrast, results = "asis">>=
+<<iwi.deforestation.contrast>>=
 ## linear contrasts of interaction terms, with the covariance between the estimates
 contrast.f <- function(fit, plus, minus) {
     b <- fixef(fit); V <- as.matrix(vcov(fit))
@@ -1143,22 +677,15 @@ contrast.tab <- rbindlist(lapply(names(fits), function(m) {
     data.table(model = m, ca = ca[1], ca.p = ca[2], ea = ea[1], ea.p = ea[2])
 }))
 setnames(contrast.tab, c("", "C $-$ A [95\\% CI]", "p", "E $-$ A [95\\% CI]", "p"))
-print(xtable(contrast.tab,
+tab_contrast <- list(x = xtable(contrast.tab,
              caption = "Difference in the IWI trend (IWI units per year) between deforestation paths, per percentage point of the land area, with 95\\% confidence intervals and p-values. C $-$ A: one percentage point of the land going from forest to cropland instead of from forest to short vegetation; E $-$ A: from forest to built-up instead of to short vegetation. Models as in Table \\ref{tab:iwi-deforestation}.",
              label = "tab:contrast", align = c("l", "l", "r", "r", "r", "r")),
-      include.rownames = FALSE, booktabs = TRUE, size = "small",
-      sanitize.text.function = identity, sanitize.colnames.function = identity)
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "small",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
 @
 
-
-\section{Observed IWI trend per area}
-
-As an alternative to the model-based trend, we estimate an observed IWI trend for every area with at least two interview years: a linear regression of the average IWI per area and interview year on year, with an intercept and a slope of its own for every area (fixed effects, no shrinkage), and a common coefficient for the average education of the cohort born 1960--1976. The education term corrects for the fact that different households and villages are sampled in each survey: if a survey happens to sample a better educated part of the area, its IWI is adjusted accordingly. Since the slopes are not shrunk, noise in them reduces precision in a second step but does not bias associations towards zero.
-
-The sampling error of an area-year average has two components: the variation between the sampled villages (clusters), which does not decrease with the number of households, and the variation between households, which decreases with the number of respondents $n$. We therefore model the variance of an area-year average as $\tau^2 + \sigma^2_w / n$, estimate $\tau^2$ and $\sigma^2_w$ from the residuals of an unweighted first fit (corrected for leverage), and re-estimate the trends with weights $1 / (\tau^2 + \sigma^2_w / n)$. The standard error of each area's slope follows from these weights. The between-area standard deviation of the true slopes is estimated with the DerSimonian--Laird method, and the reliability of an area's slope is the share of its variance that is between-area variation rather than sampling error.
-
 <<iwi.observed.trend>>=
-library(data.table); library(fixest)
+library(data.table)
 
 obs.dt <- merge(bal[, list(area.name, top.level.region, country, year.of.interview,
                            average.iwi, average.education)],
@@ -1171,7 +698,7 @@ obs.dt[, t := year.of.interview - 2010]
 setorder(obs.dt, area.name, t)
 
 ## 1. Unweighted fit, residuals and leverage (within-area intercept and slope)
-fit.obs.0 <- feols(average.iwi ~ average.education | area.name[t], data = obs.dt)
+fit.obs.0 <- fixest::feols(average.iwi ~ average.education | area.name[t], data = obs.dt)
 obs.dt[, e0 := resid(fit.obs.0)]
 obs.dt[, h := 1 / .N + (t - mean(t))^2 / sum((t - mean(t))^2), by = area.name]
 
@@ -1183,9 +710,9 @@ sigma2w.obs <- max(vc[[2]], 0)
 obs.dt[, w := 1 / (tau2.obs + sigma2w.obs / n_respondents)]
 
 ## 3. Weighted fit; the weights are inverse variances
-fit.obs <- feols(average.iwi ~ average.education | area.name[t], data = obs.dt, weights = ~ w)
+fit.obs <- fixest::feols(average.iwi ~ average.education | area.name[t], data = obs.dt, weights = ~ w)
 
-fe <- fixef(fit.obs)
+fe <- fixest::fixef(fit.obs)
 slope.name <- grep("\\[\\[", names(fe), value = TRUE)
 obs.trend <- data.table(area.name = names(fe[[slope.name]]),
                         iwi_2010_obs = as.numeric(fe[["area.name"]][names(fe[[slope.name]])]),
@@ -1205,15 +732,51 @@ dl.C   <- sum(dl.w) - sum(dl.w^2) / sum(dl.w)
 tau2.slope <- max(0, (dl.Q - (nrow(obs.trend) - 1)) / dl.C)
 obs.trend[, iwi_slope_obs_rel := tau2.slope / (tau2.slope + iwi_slope_obs_se^2)]
 
+## 5. Within-country trends: as above, but with fixed effects for country x interview year.
+## All areas in a country are interviewed in the same DHS rounds, so a round that deviates
+## (an unusual year, a change of method) affects every area in the country. Without these
+## fixed effects that deviation is counted as noise in each area, which overstates the
+## standard errors for comparisons within countries. With them, an area's slope is only
+## identified relative to the other areas in its country, so it is expressed as the deviation
+## from the (inverse-variance weighted) mean slope of the country.
+wc.dt <- copy(obs.dt)[, c("e0", "h", "w") := NULL]
+repeat {                     # drop single-area country-years and areas left with one year
+    n0 <- nrow(wc.dt)
+    wc.dt <- wc.dt[, if (.N >= 2) .SD, by = list(country, year.of.interview)]
+    wc.dt <- wc.dt[, if (uniqueN(year.of.interview) >= 2) .SD, by = area.name]
+    if (nrow(wc.dt) == n0) break
+}
+setorder(wc.dt, area.name, t)
+fml.wc <- average.iwi ~ average.education | area.name[t] + country^year.of.interview
+fit.wc.0 <- fixest::feols(fml.wc, data = wc.dt, notes = FALSE)
+wc.dt <- wc.dt[fixest::obs(fit.wc.0)]
+wc.dt[, e0 := resid(fit.wc.0)]
+wc.dt[, h := 1 / .N + (t - mean(t))^2 / sum((t - mean(t))^2), by = area.name]
+wc.dt[, h := pmin(h + 1 / .N, 0.999), by = list(country, year.of.interview)]
+vc.wc <- coef(lm(I(e0^2 / (1 - h)) ~ I(1 / n_respondents), data = wc.dt[h < 0.99])); vc.wc[is.na(vc.wc)] <- 0
+tau2.wc    <- max(vc.wc[[1]], 0.01)
+sigma2w.wc <- max(vc.wc[[2]], 0)
+wc.dt[, w := 1 / (tau2.wc + sigma2w.wc / n_respondents)]
+fit.wc <- fixest::feols(fml.wc, data = wc.dt, weights = ~ w, notes = FALSE)
+fe.wc <- fixest::fixef(fit.wc)
+slope.name.wc <- grep("\\[\\[", names(fe.wc), value = TRUE)
+wc.trend <- data.table(area.name = names(fe.wc[[slope.name.wc]]),
+                       iwi_slope_wc = as.numeric(fe.wc[[slope.name.wc]]))
+wc.trend <- merge(wc.trend,
+                  wc.dt[, list(iwi_slope_wc_se = sqrt(1 / sum(w * (t - weighted.mean(t, w))^2)),
+                               wc_country = country[1]), by = area.name],
+                  by = "area.name")
+wc.trend[, iwi_slope_wc := iwi_slope_wc - weighted.mean(iwi_slope_wc, 1 / iwi_slope_wc_se^2), by = wc_country]
+wc.trend[, wc_country := NULL]
+obs.trend <- merge(obs.trend, wc.trend, by = "area.name", all.x = TRUE)
+
 ## Add to the static data set and save it again
 static.dt <- merge(static.dt, obs.trend, by = "area.name", all.x = TRUE)
 saveRDS(static.dt, "paper_II_static.RDS")
 write.csv(static.dt, file = "paper_II_static.csv", row.names = FALSE)
 @
 
-The education coefficient is \Sexpr{sprintf("%.2f", coef(fit.obs)[["average.education"]])} IWI units per year of education (s.e.\ \Sexpr{sprintf("%.2f", se(fit.obs)[["average.education"]])}). The estimated variance components are $\hat\tau = \Sexpr{sprintf("%.2f", sqrt(tau2.obs))}$ (between villages) and $\hat\sigma_w = \Sexpr{sprintf("%.1f", sqrt(sigma2w.obs))}$ (between households), in IWI units. Table \ref{tab:obs-trend} summarises the observed trends and compares them with the model-based trend, and Table \ref{tab:obs-trend-span} shows how their precision depends on the time between the first and the last interview year.
-
-<<iwi.observed.trend.table, results = "asis">>=
+<<iwi.observed.trend.table>>=
 library(xtable)
 ot <- static.dt[!is.na(iwi_slope_obs)]
 within.cor <- function(x, y, g) {
@@ -1239,11 +802,11 @@ obs.tab <- data.frame(
       format(sum(ot$iwi_slope_obs_rel >= 0.5), big.mark = ","),
       sprintf("%.2f", cor(ot$iwi_slope_obs, ot$iwi_slope)),
       sprintf("%.2f", within.cor(ot$iwi_slope_obs, ot$iwi_slope, ot$top.level.region))))
-print(xtable(obs.tab,
+tab_obs_trend <- list(x = xtable(obs.tab,
              caption = "The observed IWI trend per area (fixed intercept and slope per area, common coefficient for cohort education, weighted by the inverse of the estimated sampling variance of each area-year average) compared with the model-based trend. Reliability is the share of the variance of an area's slope that is between-area variation rather than sampling error.",
              label = "tab:obs-trend", align = c("l", "l", "r")),
-      include.rownames = FALSE, include.colnames = FALSE, booktabs = TRUE,
-      sanitize.text.function = identity, hline.after = c(-1, nrow(obs.tab)))
+    args = list(include.rownames = FALSE, include.colnames = FALSE, booktabs = TRUE,
+      sanitize.text.function = identity, hline.after = c(-1, nrow(obs.tab))))
 
 ot[, span := obs_last - obs_first]
 span.tab <- ot[, list(areas = .N,
@@ -1253,15 +816,866 @@ span.tab <- ot[, list(areas = .N,
                by = list(`interview span (years)` =
                              cut(span, c(-Inf, 3, 6, 10, Inf), labels = c("0--3", "4--6", "7--10", "11+")))]
 setorderv(span.tab, "interview span (years)")
-print(xtable(span.tab,
+tab_obs_trend_span <- list(x = xtable(span.tab,
              caption = "Precision of the observed IWI trend by the interview span, the number of years between the first and the last interview year in the area.",
              label = "tab:obs-trend-span", digits = c(0, 0, 0, 3, 3, 2)),
-      include.rownames = FALSE, booktabs = TRUE, sanitize.text.function = identity)
+    args = list(include.rownames = FALSE, booktabs = TRUE, sanitize.text.function = identity))
 @
+
+<<drivers.categories>>=
+library(data.table)
+drv <- fread("forest_drivers_2000_2020.csv", encoding = "UTF-8")[valid_2000 > 0]
+rs <- function(pattern) rowSums(drv[, .SD, .SDcols = patterns(pattern)])
+drv[, `:=`(
+    cat_P = 100 * (rs("^loss_oil_palm_to_") + palm_from_forest_forest) / valid_2000,
+    cat_U = 100 * (rs("^loss_.*_to_builtup$") - loss_oil_palm_to_builtup) / valid_2000,
+    cat_K = pct_loss_permanent_agriculture_to_cropland,
+    cat_G = pct_loss_permanent_agriculture_to_shortveg,
+    cat_S = 100 * (rs("^loss_shifting_cultivation_to_") - loss_shifting_cultivation_to_builtup) / valid_2000,
+    cat_L = 100 * (rs("^loss_logging_to_") - loss_logging_to_builtup) / valid_2000,
+    palm_nf = pct_palm_from_nonforest)]
+drv[, cat_R := 100 * (loss_total + palm_from_forest_forest) / valid_2000 -
+               (cat_P + cat_U + cat_K + cat_G + cat_S + cat_L)]
+
+q2.dt <- merge(static.dt[!is.na(iwi_slope_wc)],
+               drv[, list(area.name = region, cat_P, cat_U, cat_K, cat_G, cat_S, cat_L, cat_R, palm_nf)],
+               by = "area.name")
+q2.dt[, `:=`(nf_builtup  = 100 * (shortveg__builtup + cropland__builtup + other__builtup) / valid_2000,
+             nf_cropland = 100 * (shortveg__cropland + other__cropland) / valid_2000)]
+q2.vars <- c("cat_P", "cat_U", "cat_K", "cat_G", "cat_S", "cat_L", "cat_R")
+q2.ctrl <- c("pct_B_shortveg_to_forest", "pct_D_cropland_to_forest", "nf_builtup", "nf_cropland",
+             "palm_nf", "share.urban", "forest_share_2000", "iwi_2010_obs")
+q2.dt <- q2.dt[complete.cases(q2.dt[, c("iwi_slope_wc", "iwi_slope_wc_se", q2.vars, q2.ctrl,
+                                         "top.level.region", "country"), with = FALSE])]
+q2.labels <- c(cat_P = "P: oil palm", cat_U = "U: built-up",
+               cat_K = "K: permanent agriculture, cropland",
+               cat_G = "G: permanent agriculture, short vegetation",
+               cat_S = "S: shifting cultivation", cat_L = "L: logging", cat_R = "R: other")
+## shorter labels for the model tables
+q2.short <- c(cat_P = "P oil palm", cat_U = "U built-up", cat_K = "K perm.\\ agric., cropland",
+              cat_G = "G perm.\\ agric., short veg.", cat_S = "S shifting cultivation",
+              cat_L = "L logging", cat_R = "R other")
+@
+
+<<drivers.categories.table>>=
+library(xtable)
+cat.tab <- rbindlist(lapply(q2.vars, function(v) {
+    x <- q2.dt[[v]]
+    data.table(category = q2.labels[[v]], mean = mean(x), sd = sd(x), p90 = quantile(x, 0.9),
+               max = max(x), `areas $>$ 1\\%` = sum(x > 1))
+}))
+setnames(cat.tab, "category", "")
+tab_drivers_categories <- list(x = xtable(cat.tab,
+             caption = paste0("Forest loss 2000--2020 by what replaced the forest, per cent of the land area in 2000, ",
+                              format(nrow(q2.dt), big.mark = ","), " areas with an observed IWI trend."),
+             label = "tab:drivers-categories", digits = c(0, 0, 3, 3, 3, 2, 0)),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
+@
+
+<<two.step.models>>=
+q2.formula <- function(fe) as.formula(paste("iwi_slope_wc ~", paste(c(q2.vars, q2.ctrl), collapse = " + "),
+                                            "|", fe))
+
+## Residual between-area variance of the true slopes, Paule-Mandel estimator: the tau^2 for
+## which sum(w * e^2) with w = 1 / (se^2 + tau^2) equals the residual degrees of freedom.
+## fixest drops observations (e.g. regions with a single area), so the weights are aligned
+## with the residuals through fixest::obs().
+tau2.paule.mandel <- function(formula) {
+    q.minus.df <- function(t2) {
+        w <- 1 / (q2.dt$iwi_slope_wc_se^2 + t2)
+        f <- fixest::feols(formula, data = q2.dt, weights = w, notes = FALSE)
+        sum(w[fixest::obs(f)] * resid(f)^2) - (nobs(f) - f$nparams)
+    }
+    if (q.minus.df(0) <= 0) return(0)
+    upper <- 1
+    while (q.minus.df(upper) > 0) upper <- upper * 4
+    uniroot(q.minus.df, c(0, upper), tol = 1e-6)$root
+}
+tau2.residual <- function(fe) tau2.paule.mandel(q2.formula(fe))
+tau2.res.region <- tau2.residual("top.level.region")
+q2.dt[, w.re := 1 / (iwi_slope_wc_se^2 + tau2.res.region)]
+
+fit.q2.1 <- fixest::feols(q2.formula("top.level.region"), data = q2.dt, weights = ~ w.re, cluster = ~ country)
+fit.q2.2 <- fixest::feols(q2.formula("country"), data = q2.dt, weights = ~ w.re, cluster = ~ country)
+fit.q2.3 <- fixest::feols(q2.formula("top.level.region"), data = q2.dt, cluster = ~ country)
+q2.fits <- list(`(1) weighted, region FE` = fit.q2.1, `(2) weighted, country FE` = fit.q2.2,
+                `(3) unweighted, region FE` = fit.q2.3)
+
+## Between-area standard deviation of the true slopes within top level regions,
+## without and with the explanatory variables
+tau.within.region <- sqrt(tau2.paule.mandel(iwi_slope_wc ~ 1 | top.level.region))
+@
+
+<<two.step.table>>=
+cat.sd <- sapply(q2.vars, function(v) sd(q2.dt[[v]]))
+est.ci.q2 <- function(fit, v, scale) {
+    e <- coef(fit)[[v]] * scale; s <- fixest::se(fit)[[v]] * scale
+    sprintf("%.3f [%.3f, %.3f]", e, e - 1.96 * s, e + 1.96 * s)
+}
+two.step.tab <- data.table(variable = q2.short[q2.vars],
+                           sapply(q2.fits, function(f) sapply(q2.vars, function(v) est.ci.q2(f, v, cat.sd[[v]]))))
+setnames(two.step.tab, c("", "(1)", "(2)", "(3)"))
+tab_two_step <- list(x = xtable(two.step.tab,
+             caption = paste0("Difference in the observed IWI trend (IWI units per year) associated with one standard deviation more of each category of forest loss 2000--2020, with 95\\% confidence intervals clustered by country. (1) weighted, fixed effects for top level region; (2) weighted, fixed effects for country; (3) unweighted, fixed effects for top level region. ",
+                              format(nrow(q2.dt), big.mark = ","), " areas. Weights $1/(\\mathrm{se}^2 + \\tau^2_{\\mathrm{res}})$ with $\\hat\\tau_{\\mathrm{res}} = ",
+                              sprintf("%.3f", sqrt(tau2.res.region)),
+                              "$. Controls: regrowth (B, D), built-up, cropland and oil palm expansion on non-forest land, share of urban respondents, forest cover in 2000 and observed IWI in 2010."),
+             label = "tab:two-step", align = c("l", "l", "r", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
+@
+
+<<two.step.contrast>>=
+contrast.q2 <- function(fit, plus, minus) {
+    requireNamespace("fixest", quietly = TRUE)        # vcov() method for fixest objects
+    b <- coef(fit); V <- vcov(fit)
+    L <- setNames(numeric(length(b)), names(b)); L[plus] <- 1; L[minus] <- -1
+    e <- sum(L * b); s <- sqrt(as.numeric(t(L) %*% V %*% L))
+    c(sprintf("%.4f [%.4f, %.4f]", e, e - 1.96 * s, e + 1.96 * s), sprintf("%.3f", 2 * pnorm(-abs(e / s))))
+}
+pairs <- list(c("cat_P", "cat_S"), c("cat_K", "cat_S"), c("cat_G", "cat_S"), c("cat_L", "cat_S"), c("cat_K", "cat_G"))
+contrast.q2.tab <- rbindlist(lapply(pairs, function(pr) {
+    r1 <- contrast.q2(fit.q2.1, pr[1], pr[2]); r3 <- contrast.q2(fit.q2.3, pr[1], pr[2])
+    data.table(contrast = paste0(sub(":.*", "", q2.labels[[pr[1]]]), " $-$ ", sub(":.*", "", q2.labels[[pr[2]]])),
+               w = r1[1], w.p = r1[2], u = r3[1], u.p = r3[2])
+}))
+setnames(contrast.q2.tab, c("", "(1) [95\\% CI]", "p", "(3) [95\\% CI]", "p"))
+tab_two_step_contrast <- list(x = xtable(contrast.q2.tab,
+             caption = "Differences in the observed IWI trend (IWI units per year) between categories of forest loss, per percentage point of the land area. For example, P $-$ S compares an area where one percentage point of the land went from forest to oil palm with an area where it went to shifting cultivation. Models (1) and (3) of Table \\ref{tab:two-step}.",
+             label = "tab:two-step-contrast", align = c("l", "l", "r", "r", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
+@
+
+<<two.step.country.models>>=
+## Q-profile 95% confidence interval for tau: the values of tau^2 for which the weighted sum of
+## squared residuals lies between the 2.5% and 97.5% quantiles of chi-square(df)
+tau.qprofile <- function(formula, level = 0.95) {
+    q.at <- function(t2) {
+        w <- 1 / (q2.dt$iwi_slope_wc_se^2 + t2)
+        f <- fixest::feols(formula, data = q2.dt, weights = w, notes = FALSE)
+        c(q = sum(w[fixest::obs(f)] * resid(f)^2), df = nobs(f) - f$nparams)
+    }
+    q0 <- q.at(0)
+    target.hi <- qchisq((1 - level) / 2, q0[["df"]])        # gives the upper limit of tau^2
+    target.lo <- qchisq(1 - (1 - level) / 2, q0[["df"]])    # gives the lower limit of tau^2
+    find <- function(target) {
+        if (q0[["q"]] <= target) return(0)
+        upper <- 1
+        while (q.at(upper)[["q"]] > target) upper <- upper * 4
+        uniroot(function(t2) q.at(t2)[["q"]] - target, c(0, upper), tol = 1e-7)$root
+    }
+    sqrt(c(lower = find(target.lo), upper = find(target.hi)))
+}
+
+tau.within.country    <- sqrt(tau2.paule.mandel(iwi_slope_wc ~ 1 | country))
+tau.within.country.ci <- tau.qprofile(iwi_slope_wc ~ 1 | country)
+tau2.res.country      <- tau2.residual("country")
+tau.res.country.ci    <- tau.qprofile(q2.formula("country"))
+
+q2.dt[, w.re.country := 1 / (iwi_slope_wc_se^2 + tau2.res.country)]
+fit.q2.c1 <- fixest::feols(q2.formula("country"), data = q2.dt, weights = ~ w.re.country, cluster = ~ country)
+fit.q2.c2 <- fixest::feols(q2.formula("country"), data = q2.dt, cluster = ~ country)
+## areas whose interviews span at least ten years
+fit.q2.c3 <- fixest::feols(q2.formula("country"), data = q2.dt[obs_last - obs_first >= 10],
+                           weights = ~ w.re.country, cluster = ~ country)
+q2.country.fits <- list(`(4)` = fit.q2.c1, `(5)` = fit.q2.c2, `(6)` = fit.q2.c3)
+@
+
+<<two.step.country.table>>=
+two.step.country.tab <- data.table(variable = q2.short[q2.vars],
+                                   sapply(q2.country.fits, function(f)
+                                       sapply(q2.vars, function(v) est.ci.q2(f, v, cat.sd[[v]]))))
+setnames(two.step.country.tab, c("", "(4)", "(5)", "(6)"))
+tab_two_step_country <- list(x = xtable(two.step.country.tab,
+             caption = paste0("Difference in the observed IWI trend (IWI units per year) associated with one standard deviation more of each category of forest loss 2000--2020, comparing areas within the same country, with 95\\% confidence intervals clustered by country. (4) weighted, ",
+                              format(nobs(fit.q2.c1), big.mark = ","), " areas; (5) unweighted; (6) weighted, areas with at least ten years between the first and the last interview (",
+                              format(nobs(fit.q2.c3), big.mark = ","), " areas). Weights $1/(\\mathrm{se}^2 + \\tau^2_{\\mathrm{res}})$ with $\\hat\\tau_{\\mathrm{res}} = ",
+                              sprintf("%.3f", sqrt(tau2.res.country)),
+                              "$. Fixed effects for country and the same controls as in Table \\ref{tab:two-step}."),
+             label = "tab:two-step-country", align = c("l", "l", "r", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
+@
+
+<<two.step.country.contrast>>=
+contrast.country.tab <- rbindlist(lapply(pairs, function(pr) {
+    r4 <- contrast.q2(fit.q2.c1, pr[1], pr[2]); r6 <- contrast.q2(fit.q2.c3, pr[1], pr[2])
+    data.table(contrast = paste0(sub(":.*", "", q2.labels[[pr[1]]]), " $-$ ", sub(":.*", "", q2.labels[[pr[2]]])),
+               a = r4[1], a.p = r4[2], b = r6[1], b.p = r6[2])
+}))
+setnames(contrast.country.tab, c("", "(4) [95\\% CI]", "p", "(6) [95\\% CI]", "p"))
+tab_two_step_country_contrast <- list(x = xtable(contrast.country.tab,
+             caption = "Differences in the observed IWI trend (IWI units per year) between categories of forest loss, per percentage point of the land area, comparing areas within the same country. Models (4) and (6) of Table \\ref{tab:two-step-country}.",
+             label = "tab:two-step-country-contrast", align = c("l", "l", "r", "r", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
+@
+
+<<sensitivity.loo>>=
+latex.escape <- function(x) gsub("([&%#_$])", "\\\\\\1", x)
+## share of the oil palm area (P, in land area units) by country
+palm.by.country <- q2.dt[, list(palm = sum(cat_P * valid_2000)), by = country][order(-palm)]
+palm.by.country[, share := palm / sum(palm)]
+
+## leave one country out, model (4). The weights are computed here: columns added to q2.dt
+## with := in another chunk are not restored when that chunk is loaded from the knitr cache.
+loo.one <- function(excluded) {
+    d <- if (is.na(excluded)) copy(q2.dt) else q2.dt[country != excluded]
+    d[, w.loo := 1 / (iwi_slope_wc_se^2 + tau2.res.country)]
+    f <- fixest::feols(q2.formula("country"), data = d, weights = ~ w.loo, cluster = ~ country,
+                       notes = FALSE)
+    ps <- contrast.q2(f, "cat_P", "cat_S")
+    data.table(excluded = ifelse(is.na(excluded), "none (all countries)", excluded),
+               areas = nobs(f),
+               P = coef(f)[["cat_P"]] * cat.sd[["cat_P"]],
+               S = coef(f)[["cat_S"]] * cat.sd[["cat_S"]],
+               PS = sum(coef(f)[c("cat_P", "cat_S")] * c(1, -1)),
+               PS.ci = ps[1], PS.p = as.numeric(ps[2]))
+}
+loo.dt <- rbindlist(c(list(loo.one(NA)), lapply(sort(unique(q2.dt$country)), loo.one)))
+loo.full <- loo.dt[1]
+loo.dt <- loo.dt[-1][, change := abs(PS - loo.full$PS)]
+@
+
+<<sensitivity.loo.table>>=
+loo.tab <- rbind(loo.full, head(loo.dt[order(-change)], 8), fill = TRUE)[, list(
+    `country left out` = latex.escape(excluded), areas = format(areas, big.mark = ","),
+    `P (per sd)` = sprintf("%.3f", P), `S (per sd)` = sprintf("%.3f", S),
+    `P $-$ S (per pp) [95\\% CI]` = PS.ci, p = sprintf("%.3f", PS.p))]
+tab_loo <- list(x = xtable(loo.tab,
+             caption = "Model (4) of Table \\ref{tab:two-step-country} re-estimated leaving out one country at a time: the full sample and the eight countries whose exclusion changes the contrast P $-$ S (oil palm $-$ shifting cultivation, IWI units per year per percentage point of the land area) the most.",
+             label = "tab:loo", align = c("l", "l", "r", "r", "r", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity,
+      hline.after = c(-1, 0, 1, nrow(loo.tab))))
+@
+
+<<sensitivity.split.R>>=
+## components of R, per cent of the land area in 2000 (losses that did not become built-up)
+nb <- function(driver) 100 * (rs(paste0("^loss_", driver, "_to_")) -
+                              drv[[paste0("loss_", driver, "_to_builtup")]]) / drv$valid_2000
+r.split <- data.table(area.name = drv$region,
+                      r_mining  = nb("hard_commodities"),
+                      r_fire    = nb("wildfire"),
+                      r_natural = nb("other_natural_disturbances"),
+                      r_none    = nb("none"),
+                      r_settl   = nb("settlements_infrastructure"),
+                      r_agother = drv$pct_loss_permanent_agriculture_to_other)
+q2.dt <- merge(q2.dt, r.split, by = "area.name", all.x = TRUE)
+r.vars <- c("r_mining", "r_fire", "r_natural", "r_none", "r_settl", "r_agother")
+stopifnot(max(abs(rowSums(q2.dt[, ..r.vars]) - q2.dt$cat_R)) < 1e-6)   # the components add up to R
+r.labels <- c(r_mining = "R1 mining, energy", r_fire = "R2 wildfire", r_natural = "R3 other natural disturbances",
+              r_none = "R4 no driver", r_settl = "R5 settlements, not built-up",
+              r_agother = "R6 perm.\\ agric., other classes")
+
+vars.split <- c(setdiff(q2.vars, "cat_R"), r.vars)
+f.split <- as.formula(paste("iwi_slope_wc ~", paste(c(vars.split, q2.ctrl), collapse = " + "), "| country"))
+tau2.split <- tau2.paule.mandel(f.split)
+q2.dt[, w.split := 1 / (iwi_slope_wc_se^2 + tau2.split)]
+fit.split <- fixest::feols(f.split, data = q2.dt, weights = ~ w.split, cluster = ~ country)
+@
+
+<<sensitivity.split.R.table>>=
+split.sd <- sapply(vars.split, function(v) sd(q2.dt[[v]]))
+split.tab <- data.table(variable = c(q2.short[setdiff(q2.vars, "cat_R")], r.labels),
+                        mean = sapply(vars.split, function(v) sprintf("%.3f", mean(q2.dt[[v]]))),
+                        est = sapply(vars.split, function(v) est.ci.q2(fit.split, v, split.sd[[v]])))
+setnames(split.tab, c("", "mean (\\%)", "estimate per sd [95\\% CI]"))
+tab_split_R <- list(x = xtable(split.tab,
+             caption = paste0("Model (4) of Table \\ref{tab:two-step-country} with category R split into its components: difference in the observed IWI trend (IWI units per year) per standard deviation, comparing areas within the same country, with 95\\% confidence intervals clustered by country. $\\hat\\tau_{\\mathrm{res}} = ",
+                              sprintf("%.3f", sqrt(tau2.split)), "$."),
+             label = "tab:split-R", align = c("l", "l", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
+@
+
+<<sensitivity.loo.L>>=
+logging.by.country <- q2.dt[, list(logging = sum(cat_L * valid_2000)), by = country][order(-logging)]
+logging.by.country[, share := logging / sum(logging)]
+
+## weights computed here, see the comment in chunk sensitivity.loo
+loo.L.one <- function(excluded) {
+    d <- if (is.na(excluded)) copy(q2.dt) else q2.dt[country != excluded]
+    d[, w.loo := 1 / (iwi_slope_wc_se^2 + tau2.res.country)]
+    f <- fixest::feols(q2.formula("country"), data = d, weights = ~ w.loo, cluster = ~ country,
+                       notes = FALSE)
+    e <- coef(f)[["cat_L"]] * cat.sd[["cat_L"]]; s <- fixest::se(f)[["cat_L"]] * cat.sd[["cat_L"]]
+    data.table(excluded = ifelse(is.na(excluded), "none (all countries)", excluded),
+               areas = nobs(f), L = e, L.lo = e - 1.96 * s, L.hi = e + 1.96 * s,
+               L.p = fixest::pvalue(f)[["cat_L"]])
+}
+loo.L.dt <- rbindlist(c(list(loo.L.one(NA)), lapply(sort(unique(q2.dt$country)), loo.L.one)))
+loo.L.full <- loo.L.dt[1]
+loo.L.dt <- loo.L.dt[-1][, change := abs(L - loo.L.full$L)]
+@
+
+<<sensitivity.loo.L.table>>=
+loo.L.tab <- rbind(loo.L.full, head(loo.L.dt[order(-change)], 8), fill = TRUE)[, list(
+    `country left out` = latex.escape(excluded), areas = format(areas, big.mark = ","),
+    `share of logging` = ifelse(excluded %in% logging.by.country$country,
+                                sprintf("%.1f\\%%", 100 * logging.by.country$share[match(excluded, logging.by.country$country)]), ""),
+    `L (per sd) [95\\% CI]` = sprintf("%.3f [%.3f, %.3f]", L, L.lo, L.hi), p = sprintf("%.3f", L.p))]
+tab_loo_L <- list(x = xtable(loo.L.tab,
+             caption = "Model (4) of Table \\ref{tab:two-step-country} re-estimated leaving out one country at a time: the full sample and the eight countries whose exclusion changes the estimate for L (logging, IWI units per year per standard deviation) the most. Share of logging: the country's share of all forest loss to logging in the areas of the analysis.",
+             label = "tab:loo-L", align = c("l", "l", "r", "r", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity,
+      hline.after = c(-1, 0, 1, nrow(loo.L.tab))))
+@
+
+<<palm.split.data, cache.extra = tools::md5sum("forest_drivers_2000_2020.csv")>>=
+library(data.table)
+## read the file again: chunk drivers.categories may come from the cache, made before the
+## file had the columns by plantation type
+drv.palm <- fread("forest_drivers_2000_2020.csv", encoding = "UTF-8")[valid_2000 > 0]
+pc <- function(cols) 100 * rowSums(drv.palm[, ..cols]) / drv.palm$valid_2000
+pf <- function(type, period) paste0("palm_from_forest_", type, "_", period)
+## untyped oil palm (planting year, but not in the 2021 extent map) is counted as smallholder
+palm.split <- data.table(
+    area.name   = drv.palm$region,
+    p_ind       = pc(c(pf("industrial", "early"), pf("industrial", "late"))),
+    p_sm        = pc(c(pf(c("smallholder", "untyped"), "early"), pf(c("smallholder", "untyped"), "late"))),
+    p_sm.only   = pc(c(pf("smallholder", "early"), pf("smallholder", "late"))),
+    p_un        = pc(c(pf("untyped", "early"), pf("untyped", "late"))),
+    p_early     = pc(pf(c("industrial", "smallholder", "untyped"), "early")),
+    p_late      = pc(pf(c("industrial", "smallholder", "untyped"), "late")),
+    p_ind_early = pc(pf("industrial", "early")),  p_ind_late = pc(pf("industrial", "late")),
+    p_sm_early  = pc(pf(c("smallholder", "untyped"), "early")),
+    p_sm_late   = pc(pf(c("smallholder", "untyped"), "late")),
+    palm_old    = drv.palm$pct_palm_before)
+q2p <- merge(q2.dt, palm.split, by = "area.name")
+## the split adds up to P, apart from oil palm on cells with no data in 2020
+palm.split.check <- max(abs(q2p[, p_ind + p_sm] - q2p$cat_P))
+
+palm.labels <- c(p_ind = "P industrial", p_sm = "P smallholder",
+                 p_early = "P planted 2001--2010", p_late = "P planted 2011--2020",
+                 p_ind_early = "P industrial, 2001--2010", p_ind_late = "P industrial, 2011--2020",
+                 p_sm_early = "P smallholder, 2001--2010", p_sm_late = "P smallholder, 2011--2020",
+                 palm_old = "oil palm planted before 2001", cat_S = "S shifting cultivation")
+palm.n <- sapply(names(palm.labels), function(v) sum(q2p[[v]] > 1))
+@
+
+<<palm.split.models>>=
+## Paule-Mandel tau^2 for a formula and data set (weights aligned with fixest::obs())
+tau2.pm.on <- function(formula, data) {
+    q.minus.df <- function(t2) {
+        w <- 1 / (data$iwi_slope_wc_se^2 + t2)
+        f <- fixest::feols(formula, data = data, weights = w, notes = FALSE)
+        sum(w[fixest::obs(f)] * resid(f)^2) - (nobs(f) - f$nparams)
+    }
+    if (q.minus.df(0) <= 0) return(0)
+    upper <- 1
+    while (q.minus.df(upper) > 0) upper <- upper * 4
+    uniroot(q.minus.df, c(0, upper), tol = 1e-6)$root
+}
+others <- setdiff(q2.vars, "cat_P")
+palm.specs <- list(type   = c("p_ind", "p_sm", "palm_old"),
+                   period = c("p_early", "p_late", "palm_old"),
+                   both   = c("p_ind_early", "p_ind_late", "p_sm_early", "p_sm_late", "palm_old"))
+palm.fits <- lapply(palm.specs, function(pv) {
+    fml <- as.formula(paste("iwi_slope_wc ~", paste(c(pv, others, q2.ctrl), collapse = " + "), "| country"))
+    t2 <- tau2.pm.on(fml, q2p)
+    d <- copy(q2p)[, w.palm := 1 / (iwi_slope_wc_se^2 + t2)]
+    list(fit = fixest::feols(fml, data = d, weights = ~ w.palm, cluster = ~ country), tau2 = t2)
+})
+@
+
+<<palm.split.table>>=
+est.ci.pp <- function(fit, v) {
+    if (!v %in% names(coef(fit))) return("")
+    e <- coef(fit)[[v]]; s <- fixest::se(fit)[[v]]
+    sprintf("%.3f [%.3f, %.3f]", e, e - 1.96 * s, e + 1.96 * s)
+}
+## one block of rows per model
+palm.tab <- rbindlist(lapply(names(palm.specs), function(m) {
+    vars <- c(palm.specs[[m]], "cat_S")
+    data.table(model = c(type = "(7) by type", period = "(8) by period", both = "(9) by type and period")[[m]],
+               variable = palm.labels[vars], areas = palm.n[vars],
+               est = sapply(vars, function(v) est.ci.pp(palm.fits[[m]]$fit, v)))
+}))
+palm.tab[duplicated(model), model := ""]
+setnames(palm.tab, c("model", "", "areas $>$ 1\\%", "per pp [95\\% CI]"))
+tab_palm_split <- list(x = xtable(palm.tab,
+             caption = paste0("Oil palm on former forest land by plantation type and planting period: difference in the observed IWI trend (IWI units per year) per percentage point of the land area, comparing areas within the same country, with 95\\% confidence intervals clustered by country. ",
+                              format(nobs(palm.fits$type$fit), big.mark = ","), " areas. Same controls and the other categories of forest loss as in Table \\ref{tab:two-step-country}; $\\hat\\tau_{\\mathrm{res}}$ = ",
+                              paste(sprintf("%.3f", sqrt(sapply(palm.fits, `[[`, "tau2"))), collapse = ", "),
+                              " for models (7)--(9). (7) by plantation type, (8) by planting period, (9) by type and period; untyped oil palm is counted as smallholder. Areas $>$ 1\\%: areas with more than 1\\% of the land area in the category."),
+             label = "tab:palm-split", align = c("l", "l", "l", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity,
+      hline.after = c(-1, 0, cumsum(lengths(palm.specs) + 1))))
+@
+
+<<palm.split.contrast>>=
+palm.contrasts <- list(
+    list("type", "p_sm", "p_ind", "smallholder $-$ industrial"),
+    list("type", "p_ind", "cat_S", "industrial $-$ shifting cultivation"),
+    list("type", "p_sm", "cat_S", "smallholder $-$ shifting cultivation"),
+    list("period", "p_early", "p_late", "planted 2001--2010 $-$ 2011--2020"),
+    list("period", "p_early", "cat_S", "planted 2001--2010 $-$ shifting cultivation"),
+    list("period", "p_late", "cat_S", "planted 2011--2020 $-$ shifting cultivation"),
+    list("both", "p_sm_early", "p_ind_early", "smallholder $-$ industrial, 2001--2010"),
+    list("both", "p_sm_late", "p_ind_late", "smallholder $-$ industrial, 2011--2020"))
+palm.contrast.tab <- rbindlist(lapply(palm.contrasts, function(x) {
+    r <- contrast.q2(palm.fits[[x[[1]]]]$fit, x[[2]], x[[3]])
+    data.table(contrast = x[[4]], model = c(type = "(7)", period = "(8)", both = "(9)")[[x[[1]]]],
+               est = r[1], p = r[2])
+}))
+setnames(palm.contrast.tab, c("", "model", "per pp [95\\% CI]", "p"))
+tab_palm_split_contrast <- list(x = xtable(palm.contrast.tab,
+             caption = "Differences in the observed IWI trend (IWI units per year) between kinds of oil palm, and between oil palm and shifting cultivation, per percentage point of the land area, comparing areas within the same country. Models of Table \\ref{tab:palm-split}.",
+             label = "tab:palm-split-contrast", align = c("l", "l", "c", "r", "r")),
+    args = list(include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity))
+@
+
+
+<<rq1.lmer.data>>=
+## RQ1: area-year IWI with the cumulative forest loss since 2000 as a time-varying predictor.
+## Interview years 2000-2020 (the years covered by the yearly interpolated forest data).
+library(data.table)
+rq1.long <- merge(bal[, list(country, top.level.region, area.name, year.of.interview,
+                             average.iwi, average.education)],
+                  n.resp, by = c("year.of.interview", "area.name"))
+rq1.fc <- deforestation_yearly.dt[, list(area.name = region, year.of.interview = year,
+                                         forest_loss = -forestation_change)]
+## forest cover change in percentage points of the land area (the data may be stored as shares)
+if (max(abs(rq1.fc$forest_loss), na.rm = TRUE) <= 1) rq1.fc[, forest_loss := 100 * forest_loss]
+rq1.long <- merge(rq1.long, rq1.fc, by = c("area.name", "year.of.interview"))
+rq1.long <- rq1.long[complete.cases(rq1.long)]
+rq1.long[, `:=`(t = (year.of.interview - 2010) / 10,          # decades from 2010
+                w = n_respondents / mean(n_respondents))]
+@
+
+<<rq1.lmer.models>>=
+library(lme4)
+rq1.ctrl <- lmerControl(optimizer = "bobyqa", calc.derivs = FALSE)
+## effect of forest loss varying between countries and between top level regions within countries
+fit.rq1 <- lmer(average.iwi ~ t + forest_loss + average.education + (1 | area.name) +
+                    (1 + t + forest_loss || top.level.region) + (1 + t + forest_loss || country),
+                data = rq1.long, weights = w, control = rq1.ctrl)
+## the same model with a common effect of forest loss
+fit.rq1.0 <- lmer(average.iwi ~ t + forest_loss + average.education + (1 | area.name) +
+                      (1 + t || top.level.region) + (1 + t || country),
+                  data = rq1.long, weights = w, control = rq1.ctrl)
+rq1.lrt <- anova(fit.rq1.0, fit.rq1, refit = FALSE)
+rq1.vc <- as.data.table(as.data.frame(VarCorr(fit.rq1)))
+rq1.vc[, grp := sub("\\.[0-9]+$", "", grp)]
+rq1.sd <- function(g) rq1.vc[grp == g & var1 == "forest_loss", sdcor]
+
+## effect of forest loss per country and per top level region: fixed effect plus the
+## conditional modes; the variance adds the conditional variances (covariances ignored)
+rq1.b  <- fixef(fit.rq1)[["forest_loss"]]
+rq1.vb <- vcov(fit.rq1)["forest_loss", "forest_loss"]
+rq1.re <- as.data.table(as.data.frame(ranef(fit.rq1, condVar = TRUE)))[term == "forest_loss"]
+rq1.country <- rq1.re[grpvar == "country", list(country = as.character(grp), c.val = condval, c.sd = condsd)]
+rq1.country[, `:=`(est = rq1.b + c.val, se = sqrt(rq1.vb + c.sd^2))]
+rq1.region <- rq1.re[grpvar == "top.level.region",
+                     list(top.level.region = as.character(grp), r.val = condval, r.sd = condsd)]
+rq1.region <- merge(rq1.region, unique(rq1.long[, list(top.level.region, country)]), by = "top.level.region")
+rq1.region <- merge(rq1.region, rq1.country[, list(country, c.val, c.sd)], by = "country")
+rq1.region[, `:=`(est = rq1.b + c.val + r.val, se = sqrt(rq1.vb + c.sd^2 + r.sd^2))]
+rq1.sig <- function(est, se) ifelse(est - qnorm(0.975) * se > 0, "positive",
+                                    ifelse(est + qnorm(0.975) * se < 0, "negative", "includes zero"))
+rq1.country[, sig := rq1.sig(est, se)]
+rq1.region[, sig := rq1.sig(est, se)]
+@
+
+
+<<rq1b.lmer.models>>=
+## Alternative specification: intercept and time trend correlated within region and country,
+## effect of forest loss uncorrelated with them.
+library(lme4); library(data.table)
+fit.rq1b <- lmer(average.iwi ~ t + forest_loss + average.education + (1 | area.name) +
+                     (1 + t | top.level.region) + (0 + forest_loss | top.level.region) +
+                     (1 + t | country) + (0 + forest_loss | country),
+                 data = rq1.long, weights = w, control = rq1.ctrl)
+## the same model with a common effect of forest loss
+fit.rq1b.0 <- lmer(average.iwi ~ t + forest_loss + average.education + (1 | area.name) +
+                       (1 + t | top.level.region) + (1 + t | country),
+                   data = rq1.long, weights = w, control = rq1.ctrl)
+rq1b.lrt <- anova(fit.rq1b.0, fit.rq1b, refit = FALSE)
+## comparison with fit.rq1 (same fixed and forest-loss terms; adds the intercept-trend correlations)
+rq1b.vs.rq1 <- anova(fit.rq1, fit.rq1b, refit = FALSE)
+rq1b.vc <- as.data.table(as.data.frame(VarCorr(fit.rq1b)))
+rq1b.vc[, grp := sub("\\.[0-9]+$", "", grp)]
+rq1b.sd  <- function(g) rq1b.vc[grp == g & var1 == "forest_loss" & is.na(var2), sdcor]
+rq1b.cor <- function(g) rq1b.vc[grp == g & var1 == "(Intercept)" & var2 == "t", sdcor]
+
+## effect of forest loss per country and per top level region (as for fit.rq1)
+rq1b.b  <- fixef(fit.rq1b)[["forest_loss"]]
+rq1b.vb <- vcov(fit.rq1b)["forest_loss", "forest_loss"]
+rq1b.re <- as.data.table(as.data.frame(ranef(fit.rq1b, condVar = TRUE)))[term == "forest_loss"]
+rq1b.country <- rq1b.re[grpvar == "country", list(country = as.character(grp), c.val = condval, c.sd = condsd)]
+rq1b.country[, `:=`(est = rq1b.b + c.val, se = sqrt(rq1b.vb + c.sd^2))]
+rq1b.region <- rq1b.re[grpvar == "top.level.region",
+                       list(top.level.region = as.character(grp), r.val = condval, r.sd = condsd)]
+rq1b.region <- merge(rq1b.region, unique(rq1.long[, list(top.level.region, country)]), by = "top.level.region")
+rq1b.region <- merge(rq1b.region, rq1b.country[, list(country, c.val, c.sd)], by = "country")
+rq1b.region[, `:=`(est = rq1b.b + c.val + r.val, se = sqrt(rq1b.vb + c.sd^2 + r.sd^2))]
+rq1b.sig <- function(est, se) ifelse(est - qnorm(0.975) * se > 0, "positive",
+                                     ifelse(est + qnorm(0.975) * se < 0, "negative", "includes zero"))
+rq1b.country[, sig := rq1b.sig(est, se)]
+rq1b.region[, sig := rq1b.sig(est, se)]
+## agreement with fit.rq1
+rq1b.agree <- merge(rq1.region[, list(top.level.region, est.a = est, sig.a = sig)],
+                    rq1b.region[, list(top.level.region, est.b = est, sig.b = sig)], by = "top.level.region")
+@
+
+
+\section{Methods and data}
+\label{sec:methods}
+
+% DRAFT. Numbers marked TODO should be replaced by \Sexpr{} once the chunks that compute
+% them have been moved before this section (\Sexpr is evaluated in document order).
+
+\subsection{Study period}
+\label{sec:study-period}
+
+Land cover is observed in two years, 2000 and 2020, and forest loss is measured as the change between them. Living conditions are observed in the years when DHS surveys were carried out in an area, which differ between countries and areas. % TODO: range and median of first and last interview year (Table \ref{tab:n-surveys})
+For each area we estimate a linear trend in average household wealth over all interview years, and relate that trend to the forest loss 2000--2020. The interview years do not coincide with the period of forest loss: in a typical area the first survey was carried out in the 2000s and the last in the 2010s. % TODO: check against Table \ref{tab:n-surveys}
+The trend is therefore a summary of the development of household wealth during, roughly, the same two decades as the forest loss, not a measurement of wealth before and after it. Since the drivers of forest loss are recorded per year 2001--2025 and the oil palm planting year per year 1990--2021, the timing of the conversion can be used for some of the categories (Section \ref{sec:palm-split}).
+
+\subsection{Study area and its partitioning}
+\label{sec:study-area}
+
+The study area consists of the administrative areas in low- and middle-income countries where the DHS has carried out surveys with GPS coordinates for the sampled villages and urban neighbourhoods (clusters). % TODO: number of countries (55?) and surveys
+The areas are those of a published data set of forest cover and forest change per administrative area \citep{Ekbrand2026forest}. It is based on the GADM boundaries \citep{Hijmans_GADM_v41}, with areas merged to ensure DHS coverage. % TODO: describe the GADM level(s) used and the merging rule
+Each DHS cluster is assigned to the area that contains its coordinates. The DHS displaces the coordinates of the clusters by up to 2 km in urban and up to 5 km in rural areas (up to 10 km for one per cent of the rural clusters) to protect the anonymity of respondents, so some clusters close to a boundary are assigned to the neighbouring area. Since the areas are much larger than the displacement, this adds some noise but should not bias the results. % TODO: median area size
+
+The land cover data are raster data at 30 m and 1 km resolution, while the areas are polygons of varying size. Every raster cell is counted with the fraction of the cell that lies inside the area (coverage-fraction weighting, \citealt{exactextractr}), so that cells on a boundary are split between the areas they belong to. All land cover variables are expressed as per cent of the land area of the area in 2000.
+
+\subsection{Data on living conditions}
+\label{sec:data-dhs}
+
+Living conditions are measured with the International Wealth Index (IWI, \citealt{Smits2014}), an asset index that ranges from 0 to 100 and is comparable across countries and over time. It is based on the household's ownership of consumer durables, access to water and sanitation, and the quality of the dwelling. The DHS household files are harmonised and linked to the areas with the R package \texttt{globallivingconditions} \citep{Ekbrand_dhsharmonisation}. For every area and interview year we compute the average IWI of the interviewed households and the number of respondents.
+
+The DHS samples different villages in each survey round, so part of the change in average IWI between two surveys reflects which villages were sampled rather than change over time. To correct for this, we use the average years of education of the respondents born 1960--1976. Their education was completed before the study period, so changes in their average education between surveys in the same area mainly reflect which villages and households were sampled. Including it as a control in the trend model adjusts the IWI of each survey for how well-off the sampled part of the area was. The variables derived from the DHS are listed in Table \ref{tab:vars-dhs}.
+
+\subsection{Data on land cover, drivers of forest loss and oil palm}
+\label{sec:data-landcover}
+\label{sec:data-map}
+
+Forest and other land cover in 2000 and 2020 are taken from the Global Land Cover and Land Use Change data set (GLCLU, \citealt{Potapov2022}), which classifies every 30 m cell as forest (trees at least 5 m tall), short vegetation, cropland, built-up land, water or other. GLCLU tells what the land is in 2020, but not what activity replaced the forest: a plantation of tall trees is classified as forest, and pasture, fallow and young tree crops are all short vegetation. We therefore combine GLCLU with two data sets on the use of the land.
+
+The first is the dominant driver of forest loss 2001--2025 in each 1 km cell \citep[v1.3]{Sims2025drivers}. The drivers are permanent agriculture (long-term establishment of cropland, pasture and tree crops), hard commodities (mining and energy), shifting cultivation (forest cleared for temporary cultivation and left to regrow), logging (forest management and logging, including wood fibre plantations), wildfire, settlements and infrastructure, and other natural disturbances. The second is the planting year of oil palm 1990--2021 at 30 m and the oil palm extent in 2021, which distinguishes industrial from smallholder plantations \citep{Descals2024}. It identifies oil palm planted on former forest land also where GLCLU still classifies the palms as forest.
+
+Every 30 m cell that was forest in 2000 and not in 2020, or where oil palm was planted 2001--2020 on land that was forest in 2000, is assigned to exactly one of seven categories, in this order: a cell with oil palm planted 2001--2020 is oil palm (P), whatever its class in 2020; of the other cells, those that are built-up land in 2020 are built-up (U), whatever the driver; the remaining cells are classified by the driver of their 1 km cell and, for permanent agriculture, by their GLCLU class in 2020. The categories are:
+
+\begin{description}
+\item[P, oil palm:] oil palm planted 2001--2020 on land that was forest in 2000, including palms that GLCLU still classifies as forest in 2020. P is split by plantation type, industrial or smallholder (oil palm with a planting year but not in the 2021 extent map is counted as smallholder), and by planting period, 2001--2010 or 2011--2020.
+\item[U, built-up:] forest that became built-up land.
+\item[K, permanent agriculture, cropland:] driver permanent agriculture and cropland in 2020, that is, annual crops.
+\item[G, permanent agriculture, short vegetation:] driver permanent agriculture and short vegetation in 2020: pasture, fallow, and tree crops other than oil palm that are shorter than 5 m. Tree crops such as cocoa and rubber therefore end up in G while they are young; tree crops that are taller than 5 m in 2020 are classified as forest by GLCLU and do not count as forest loss at all.
+\item[S, shifting cultivation:] driver shifting cultivation.
+\item[L, logging:] driver logging.
+\item[R, other:] all other forest loss: hard commodities, wildfire, other natural disturbances, the settlements and infrastructure driver where the land is not built-up in 2020, loss in 1 km cells without a driver, and permanent agriculture where the land is neither cropland nor short vegetation in 2020.
+\end{description}
+
+All categories are expressed as per cent of the land area of the area in 2000, and they add up to the total forest loss. Two approximations should be noted. The driver is recorded per 1 km cell, so every 30 m cell with forest loss in a 1 km cell gets the dominant driver of that cell, also where several processes occur side by side. And the drivers refer to forest loss 2001--2025, while forest loss is measured between 2000 and 2020. The categories, like all land cover variables, are aggregated to the areas with coverage-fraction weights (Section \ref{sec:study-area}). We also measure the transitions in the other direction, from short vegetation and cropland to forest (regrowth), and the expansion of built-up land, cropland and oil palm on land that was not forest in 2000. All variables are listed in Table \ref{tab:vars-landcover}. Figure \ref{fig:map.categories} in Section \ref{sec:res-descriptive} shows where the forest was lost, and what replaced it.
+
+\subsection{Data coverage}
+\label{sec:coverage}
+
+An area-specific trend in IWI requires at least two interview years. Of the \Sexpr{format(nrow(static.dt), big.mark = ",")} areas in the data set, \Sexpr{format(sum(!is.na(static.dt$iwi_slope_wc)), big.mark = ",")} have at least two interview years and a within-country trend, and \Sexpr{format(nrow(q2.dt), big.mark = ",")} of them have complete data on land cover and controls and enter the models.
+The precision of the trends varies a lot between areas. It depends on the number of interview years, how far apart they are, and the number of respondents in each, and in countries with only two or three survey rounds a large part of the variation in observed trends is sampling error. We take this into account by weighting the areas by the precision of their trend (Section \ref{sec:strategy}), and we report the reliability of the trends: the share of the variation in observed trends that is variation in true trends rather than sampling error. The median reliability is \Sexpr{sprintf("%.2f", median(ot$iwi_slope_obs_rel))}, and it increases with the time between the first and the last interview year (Table \ref{tab:obs-trend-span}).
+
+<<show.tab_obs_trend_span, results = "asis", cache = FALSE>>=
+show.tab(tab_obs_trend_span)
+@
+
+The weighting also means that countries with few or short surveys contribute little. Indonesia, with many areas and much of the oil palm expansion, has large standard errors for its area trends and carries little weight; the oil palm results are driven mainly by West Africa and Peru. % TODO: verify and quantify
+
+\subsection{Analytical strategy}
+\label{sec:strategy}
+
+The analysis has two steps. In the first step we estimate an observed IWI trend for every area with at least two interview years: a regression of the average IWI per area and interview year on year, with an intercept and a slope of its own for each area, the average education of the 1960--1976 cohort as a control, and fixed effects for each combination of country and interview year, which absorb national shocks and differences between survey rounds. The area slopes are therefore measured relative to other areas in the same country. The variance of each area-year average is modelled as the sum of a between-village component and a between-household component that decreases with the number of respondents, and the trends are estimated with inverse-variance weights. This gives a trend and a standard error for every area (Section \ref{sec:obs-trend}). We use this observed trend rather than the trend predicted by a mixed model with random slopes for area, top level region and country: in such a model the estimated variance of the area-specific slopes is close to zero, so the predicted trend of an area is in practice the trend of its region and country, and any association with local deforestation would be shrunk to zero before the analysis starts.
+
+For the first research question, where deforestation is associated with improved or worsened living conditions, we describe how the trends vary between areas with forest loss, and estimate how much of that variation is real rather than sampling error (the between-area standard deviation $\tau$, within countries and within top level regions). We then estimate the effect of forest loss on the level of IWI in a linear mixed model of the area-year averages, where the effect of forest loss varies between countries and between top level regions within countries, and map the estimated effects (Section \ref{sec:res-rq1}).
+
+For the second research question, whether what replaced the forest predicts the trend, we regress the area trends on the seven categories of forest loss in a meta-regression: a weighted least squares regression where each area is weighted by the inverse of its sampling variance plus the residual between-area variance, estimated with the method of \citet{PauleMandel1982}. The models control for regrowth, expansion of built-up land, cropland and oil palm on non-forest land, the share of urban respondents, the forest cover in 2000 and the IWI level of the area in 2010, and include fixed effects for country. Standard errors are clustered by country. The coefficients of the categories are compared with each other, in particular each category with shifting cultivation, since the question is not whether forest loss is good or bad but whether what replaced the forest matters. Oil palm is further split by plantation type and planting period. If the benefits of industrial plantations accrue mainly to companies and workers from elsewhere, smallholder oil palm should be associated with a better IWI trend than industrial oil palm; and since oil palm takes several years to reach full production, palms planted 2001--2010 should matter more than palms planted 2011--2020. To separate the maturity of the plantations from long-established oil palm economies, these models also control for oil palm planted before 2001 (on any land). As robustness checks we estimate the models with fixed effects for top level regions, without weights, for areas whose interviews span at least ten years, leaving out one country at a time, and with the residual category R split into its components. The full model specifications are given in Appendix \ref{sec:model-specs}.
+
+This is an observational design. The categories of forest loss are not randomly assigned, and an association between a category and the IWI trend may reflect where that kind of conversion takes place rather than its consequences. The country fixed effects and the controls for initial wealth, urbanisation and forest cover remove some of these differences, but not all.
+
+
+\section{Results}
+\label{sec:results}
+
+% DRAFT. This section is placed after the working sections because \Sexpr{} and the
+% tables need the objects computed there. When the working sections are trimmed, keep
+% their chunks (with the prose removed) and move the tables that are cited below.
+
+\subsection{Where is deforestation associated with improved living conditions?}
+\label{sec:res-rq1}
+
+To locate where deforestation is associated with improved or worsened living conditions, we model the level of IWI in each area and interview year, with the forest loss up to the interview year as a predictor whose effect may differ between countries and between regions within countries. The unit is the area-year, with interviews 2000--2020 (\Sexpr{format(nrow(rq1.long), big.mark = ",")} area-years in \Sexpr{format(uniqueN(rq1.long$area.name), big.mark = ",")} areas). The predictor $D_{at}$ is the cumulative net loss of forest cover in the area from 2000 up to the interview year, in percentage points, from the forest cover per area every fifth year \citep{Ekbrand2026forest}, interpolated linearly between those years. The model is a linear mixed model,
+\begin{align*}
+\bar Y_{at} = {} & \beta_0 + \beta_1 t + \beta_2 D_{at} + \lambda e_{at} + u_a
+ + v_{r(a)} + b_{r(a)} t + d_{r(a)} D_{at} + w_{c(a)} + g_{c(a)} t + h_{c(a)} D_{at} + \varepsilon_{at},
+\end{align*}
+where $t$ is time in decades from 2010, $e_{at}$ the average education of the 1960--1976 cohort, $u_a$ a random intercept for the area, $v_r$ and $b_r$ a random intercept and time trend for the top level region, and $w_c$ and $g_c$ the same for the country. The intercept and the time trend are allowed to correlate within regions and within countries (the estimated correlations are \Sexpr{sprintf("%.2f", rq1b.cor("top.level.region"))} and \Sexpr{sprintf("%.2f", rq1b.cor("country"))}). The random effects of forest loss, $d_r$ for the region and $h_c$ for the country, are independent of them. The area-year averages are weighted by the number of respondents. The effect of forest loss in region $r$ of country $c$ is $\beta_2 + h_c + d_r$. Since each region and country has its own time trend, the effect is identified by areas that lost more forest than other areas in their region, and by the timing of the loss, not by the general growth of IWI.
+
+The average effect of forest loss is \Sexpr{sprintf("%.3f", rq1b.b)} IWI units per percentage point of forest cover lost (95\% CI \Sexpr{sprintf("%.3f", rq1b.b - qnorm(0.975) * sqrt(rq1b.vb))}--\Sexpr{sprintf("%.3f", rq1b.b + qnorm(0.975) * sqrt(rq1b.vb))}), which cannot be distinguished from zero. The effect varies, however, between countries, with a standard deviation of \Sexpr{sprintf("%.3f", rq1b.sd("country"))}, and between top level regions within countries, with a standard deviation of \Sexpr{sprintf("%.3f", rq1b.sd("top.level.region"))}. A model where the effect of forest loss is the same everywhere fits \Sexpr{ifelse(rq1b.lrt[["Pr(>Chisq)"]][2] < 0.05, "significantly worse", "no worse")} (likelihood ratio $\chi^2_2 = \Sexpr{sprintf("%.1f", rq1b.lrt[["Chisq"]][2])}$, p \Sexpr{ifelse(rq1b.lrt[["Pr(>Chisq)"]][2] < 0.001, "$<$ 0.001", paste("=", sprintf("%.3f", rq1b.lrt[["Pr(>Chisq)"]][2])))}; the test is conservative since the variances are tested at the boundary of the parameter space). Forest loss is thus associated with rising IWI in some places and with falling IWI in others, and on average these associations nearly cancel out. The variation is substantial: in a region one standard deviation above the average, an area that lost 5 percentage points of its forest cover would have an IWI about \Sexpr{sprintf("%.1f", 5 * (rq1b.b + sqrt(rq1b.sd("country")^2 + rq1b.sd("top.level.region")^2)))} units higher than an otherwise similar area without forest loss, and in a region one standard deviation below the average about \Sexpr{sprintf("%.1f", abs(5 * (rq1b.b - sqrt(rq1b.sd("country")^2 + rq1b.sd("top.level.region")^2))))} units lower.
+
+<<rq1.map.geometry, cache.extra = tools::md5sum("forest-change.gpkg")>>=
+library(sf); library(data.table)
+old.s2 <- sf_use_s2(FALSE)
+rq1.areas <- st_read("forest-change.gpkg", quiet = TRUE)[, "region"]
+st_crs(rq1.areas) <- 4326
+rq1.key <- unique(bal[, list(region = area.name, top.level.region, country)])
+rq1.areas <- merge(rq1.areas, rq1.key, by = "region")
+rq1.areas <- st_make_valid(st_simplify(st_make_valid(rq1.areas), dTolerance = 0.02, preserveTopology = TRUE))
+rq1.dissolve <- function(x, by) {
+    g <- aggregate(x[, by], by = list(id = x[[by]]), FUN = function(v) v[1])
+    st_make_valid(g[, "id"])
+}
+rq1.region.sf  <- rq1.dissolve(rq1.areas, "top.level.region")
+rq1.country.sf <- rq1.dissolve(rq1.areas, "country")
+invisible(sf_use_s2(old.s2))
+@
+
+<<rq1b.map.region, fig.cap = "Effect of forest loss on the average IWI of an area, IWI units per percentage point of forest cover lost since 2000, per top level region, from a linear mixed model with random intercepts, time trends and effects of forest loss for countries and for top level regions within countries. The effect of a region includes the deviation of its country. Faded colours: the 95\\% interval includes zero. White land: no area in the analysis. The colour scale is capped at the 95th percentile of the absolute regional effects.", fig.width = 144/25.4, fig.height = 70/25.4, dpi = 300>>=
+library(sf); library(ggplot2); library(data.table)
+old.s2 <- sf_use_s2(FALSE)
+rq1c.map.dt <- merge(rq1.region.sf, rq1b.region[, list(id = top.level.region, est, sig)], by = "id")
+rq1c.map.dt$interval <- factor(ifelse(rq1c.map.dt$sig == "includes zero", "includes zero", "excludes zero"),
+                               levels = c("excludes zero", "includes zero"))
+rq1c.cap <- quantile(abs(rq1b.region$est), 0.95, na.rm = TRUE)
+rq1c.bg <- rnaturalearth::ne_countries(scale = 50, returnclass = "sf")[, "admin"]
+rq1c.bb <- st_bbox(rq1c.map.dt)
+
+ggplot() +
+    geom_sf(data = rq1c.bg, fill = "#ffffff", colour = NA) +
+    geom_sf(data = rq1c.map.dt, aes(fill = est, alpha = interval), colour = NA) +
+    geom_sf(data = rq1c.bg, fill = NA, colour = "#6f6e69", linewidth = 0.12) +
+    scale_fill_gradient2(low = "#b2182b", mid = "#f2f1ec", high = "#2166ac", midpoint = 0,
+                         limits = c(-rq1c.cap, rq1c.cap), oob = scales::squish,
+                         name = "IWI units per pp\nof forest lost",
+                         guide = guide_colourbar(barwidth = unit(30, "mm"), barheight = unit(2.5, "mm"))) +
+    scale_alpha_manual(values = c(`excludes zero` = 1, `includes zero` = 0.3), drop = FALSE,
+                       name = "95% interval",
+                       guide = guide_legend(override.aes = list(fill = "#2166ac"))) +
+    coord_sf(xlim = c(rq1c.bb[["xmin"]] - 1, rq1c.bb[["xmax"]] + 1),
+             ylim = c(rq1c.bb[["ymin"]] - 1, rq1c.bb[["ymax"]] + 1), expand = FALSE, datum = NA) +
+    theme_void(base_size = 7) +
+    theme(legend.position = "bottom", legend.key.size = unit(3, "mm"),
+          legend.text = element_text(size = 6, colour = "#52514e"),
+          legend.title = element_text(size = 6.5, colour = "#0b0b0b"),
+          panel.background = element_rect(fill = "#eef1f4", colour = NA),
+          plot.background = element_rect(fill = "#ffffff", colour = NA),
+          plot.margin = margin(1, 1, 1, 1))
+invisible(sf_use_s2(old.s2))
+@
+
+Figure \ref{fig:rq1b.map.region} shows the estimated effect of forest loss per top level region. The effect of a region includes the deviation of its country, so the map also shows the differences between countries; the country effects are listed in Table \ref{tab:rq1-countries} in the appendix. At the country level, the 95\% interval lies above zero in \Sexpr{sum(rq1b.country$sig == "positive")} of the \Sexpr{nrow(rq1b.country)} countries (\Sexpr{paste(rq1b.country[sig == "positive"][order(-est), country], collapse = ", ")}) and below zero in \Sexpr{sum(rq1b.country$sig == "negative")} (\Sexpr{paste(rq1b.country[sig == "negative"][order(est), country], collapse = ", ")}). Among the \Sexpr{format(nrow(rq1b.region), big.mark = ",")} top level regions, the interval lies above zero in \Sexpr{sum(rq1b.region$sig == "positive")} regions, in \Sexpr{paste(unique(rq1b.region[sig == "positive"][order(-est), country]), collapse = ", ")}, and below zero in \Sexpr{sum(rq1b.region$sig == "negative")}, in \Sexpr{paste(unique(rq1b.region[sig == "negative"][order(est), country]), collapse = ", ")}.
+
+The map shows a geographical pattern. Forest loss is associated with rising IWI in the humid parts of West and Central Africa, where the estimates are positive also in countries where the interval includes zero, such as Liberia and Ghana, and in Indonesia. It is associated with falling IWI in eastern and southern Africa, in Mozambique and Tanzania, with negative but uncertain estimates also in Uganda, Angola and India. % TODO: check the country names against the map and the table after each run
+This pattern is consistent with differences in what replaced the forest: commercial tree crops such as cocoa and oil palm in the humid zone of West and Central Africa and in Indonesia, and clearing of dry woodland for small-scale agriculture and charcoal in eastern and southern Africa. Whether what replaced the forest explains the variation is the second research question (Section \ref{sec:res-rq2}).
+
+In most regions, the 95\% interval includes zero. This should not be read as evidence that living conditions were unaffected by deforestation there. With two or three survey rounds per country, the effect in a single region is estimated with little precision, and the estimates of regions and countries with few areas or little variation in forest loss are drawn towards the effect in their country and towards the average effect. The map therefore shows few significant effects by chance, but also few real ones where the data are thin.
+
+The results are not sensitive to the specification of the random effects. In a model where the intercepts, time trends and effects of forest loss of regions and countries are all uncorrelated, the regional effects correlate \Sexpr{sprintf("%.2f", cor(rq1b.agree$est.a, rq1b.agree$est.b))} with those above, and \Sexpr{sum(rq1b.agree$sig.a == rq1b.agree$sig.b)} of the \Sexpr{nrow(rq1b.agree)} regions get the same classification (interval above zero, below zero, or including zero); the model with correlated intercepts and trends fits better ($\chi^2_{\Sexpr{rq1b.vs.rq1[["Df"]][2]}} = \Sexpr{sprintf("%.1f", rq1b.vs.rq1[["Chisq"]][2])}$, p = \Sexpr{sprintf("%.3f", rq1b.vs.rq1[["Pr(>Chisq)"]][2])}).
+
+\subsection{Forest loss and what replaced it}
+\label{sec:res-descriptive}
+
+Figure \ref{fig:map.categories} shows where the forest was lost between 2000 and 2020, and what replaced it, and Table \ref{tab:drivers-categories} summarises the seven categories across the areas with an IWI trend.
+
+<<map.categories, fig.cap = "Forest loss 2000--2020 and what replaced the forest, per cent of the land area in 2000, in the administrative areas with geocoded DHS surveys. The first panel shows all forest loss (forest in 2000, not forest in 2020, plus oil palm planted on former forest land that GLCLU still classifies as forest); the other panels split it into the seven categories, which add up to the first panel. White land: no DHS area in the analysis.", fig.width = 144/25.4, fig.height = 128/25.4, dpi = 300, cache.extra = tools::md5sum(c("forest_drivers_2000_2020.csv", "forest-change.gpkg"))>>=
+library(data.table); library(sf); library(ggplot2)
+if (!requireNamespace("rnaturalearth", quietly = TRUE) || !requireNamespace("rnaturalearthdata", quietly = TRUE))
+    stop("install.packages(c('rnaturalearth', 'rnaturalearthdata')) is needed for the country borders")
+old.s2 <- sf_use_s2(FALSE)
+
+## the seven categories, as in chunk drivers.categories (Section \ref{sec:two-step})
+map.drv <- fread("forest_drivers_2000_2020.csv", encoding = "UTF-8")[valid_2000 > 0]
+## shares of oil palm on former forest land by plantation type and planting period
+## (untyped oil palm, with a planting year but not in the 2021 extent map, counted as smallholder)
+map.pf <- function(type, period)
+    sum(as.matrix(map.drv[, .SD, .SDcols = as.vector(outer(type, period, function(t, p) paste0("palm_from_forest_", t, "_", p)))]))
+map.palm.all <- map.pf(c("industrial", "smallholder", "untyped"), c("early", "late"))
+map.palm.share <- 100 * c(industrial = map.pf("industrial", c("early", "late")),
+                          smallholder = map.pf(c("smallholder", "untyped"), c("early", "late")),
+                          early = map.pf(c("industrial", "smallholder", "untyped"), "early")) / map.palm.all
+rs.map <- function(pattern) rowSums(map.drv[, .SD, .SDcols = patterns(pattern)])
+map.drv[, `:=`(
+    cat_P = 100 * (rs.map("^loss_oil_palm_to_") + palm_from_forest_forest) / valid_2000,
+    cat_U = 100 * (rs.map("^loss_.*_to_builtup$") - loss_oil_palm_to_builtup) / valid_2000,
+    cat_K = pct_loss_permanent_agriculture_to_cropland,
+    cat_G = pct_loss_permanent_agriculture_to_shortveg,
+    cat_S = 100 * (rs.map("^loss_shifting_cultivation_to_") - loss_shifting_cultivation_to_builtup) / valid_2000,
+    cat_L = 100 * (rs.map("^loss_logging_to_") - loss_logging_to_builtup) / valid_2000,
+    cat_T = 100 * (loss_total + palm_from_forest_forest) / valid_2000)]
+map.drv[, cat_R := cat_T - (cat_P + cat_U + cat_K + cat_G + cat_S + cat_L)]
+map.panels <- c(cat_T = "All forest loss", cat_P = "P  oil palm", cat_U = "U  built-up",
+                cat_K = "K  permanent agriculture, cropland",
+                cat_G = "G  permanent agriculture, short vegetation",
+                cat_S = "S  shifting cultivation", cat_L = "L  logging", cat_R = "R  other")
+map.cat.dt <- melt(map.drv[, c("region", names(map.panels)), with = FALSE], id.vars = "region",
+                   variable.name = "cat", value.name = "pct")
+map.labels <- c("< 0.1", "0.1--0.5", "0.5--2", "2--5", "5--10", "> 10")
+map.cat.dt[, class := factor(cut(pct, c(-Inf, 0.1, 0.5, 2, 5, 10, Inf), labels = map.labels, right = FALSE),
+                             levels = map.labels)]
+map.cat.dt[, panel := factor(map.panels[as.character(cat)], levels = map.panels)]
+
+## area geometries, simplified for plotting
+map.areas <- st_read("forest-change.gpkg", quiet = TRUE)[, "region"]
+st_crs(map.areas) <- 4326
+map.areas <- map.areas[map.areas$region %in% map.drv$region, ]
+map.areas <- st_make_valid(st_simplify(st_make_valid(map.areas), dTolerance = 0.02, preserveTopology = TRUE))
+map.sf <- merge(map.areas, map.cat.dt, by = "region")
+map.countries <- rnaturalearth::ne_countries(scale = 50, returnclass = "sf")[, "admin"]
+map.bb <- st_bbox(map.areas)
+
+## one-hue sequential ramp; the lowest class recedes to a neutral grey
+map.cols <- setNames(c("#e6e5e1", "#b7d3f6", "#6da7ec", "#2a78d6", "#1c5cab", "#0d366b"), map.labels)
+names(map.cols) <- gsub("--", "–", names(map.cols))
+levels(map.sf$class) <- gsub("--", "–", levels(map.sf$class))
+
+ggplot() +
+    geom_sf(data = map.countries, fill = "#ffffff", colour = NA) +
+    geom_sf(data = map.sf, aes(fill = class), colour = NA) +
+    geom_sf(data = map.countries, fill = NA, colour = "#6f6e69", linewidth = 0.12) +
+    scale_fill_manual(values = map.cols, name = "% of land area in 2000", drop = FALSE,
+                      guide = guide_legend(nrow = 1, title.position = "left")) +
+    coord_sf(xlim = c(map.bb[["xmin"]] - 1, map.bb[["xmax"]] + 1),
+             ylim = c(map.bb[["ymin"]] - 1, map.bb[["ymax"]] + 1), expand = FALSE, datum = NA) +
+    facet_wrap(~ panel, ncol = 2) +
+    theme_void(base_size = 7) +
+    theme(strip.text = element_text(hjust = 0, size = 7, margin = margin(2, 0, 2, 2), colour = "#0b0b0b"),
+          legend.position = "bottom", legend.key.size = unit(3, "mm"),
+          legend.text = element_text(size = 6, colour = "#52514e"),
+          legend.title = element_text(size = 6.5, colour = "#0b0b0b"),
+          panel.background = element_rect(fill = "#eef1f4", colour = NA),
+          plot.background = element_rect(fill = "#ffffff", colour = NA),
+          panel.spacing = unit(2, "mm"), plot.margin = margin(1, 1, 1, 1))
+invisible(sf_use_s2(old.s2))
+@
+
+The map covers the \Sexpr{format(uniqueN(map.cat.dt$region), big.mark = ",")} areas with geocoded DHS surveys and land cover data. The categories are geographically distinct. Oil palm on former forest land is concentrated in Indonesia and coastal West Africa; permanent agriculture with cropland in the Sahel belt, in Zambia, Malawi and Tanzania, and on the soy frontier of eastern Bolivia; permanent agriculture with short vegetation (pasture, tree crops and fallow) in the Amazon and Colombia, across West and Central Africa, Madagascar and Southeast Asia; shifting cultivation in the Congo basin, Myanmar and Madagascar; and logging in Indonesia and the plantation forestry of southern Africa. Because the categories are concentrated in different countries, the analyses below compare areas within countries.
+
+Of the oil palm planted 2001--2020 on former forest land in the areas of the data set, \Sexpr{sprintf("%.0f", map.palm.share[["industrial"]])}\% is industrial and \Sexpr{sprintf("%.0f", map.palm.share[["smallholder"]])}\% smallholder, and \Sexpr{sprintf("%.0f", map.palm.share[["early"]])}\% was planted 2001--2010.
+
+<<show.tab_drivers_categories, results = "asis", cache = FALSE>>=
+show.tab(tab_drivers_categories)
+@
+% TODO: two or three sentences on the size of the categories: which dominate in area, which are concentrated in few areas (oil palm, logging)
+
+\subsection{Does what replaced the forest predict the change in living conditions?}
+\label{sec:res-rq2}
+\label{sec:two-step-country}
+
+<<show.tab_two_step_country, results = "asis", cache = FALSE>>=
+show.tab(tab_two_step_country)
+@
+
+<<rq2.coef, fig.cap = "Difference in the observed IWI trend between each category of forest loss and shifting cultivation, IWI units per year per percentage point of the land area, with 95\\% confidence intervals (standard errors clustered by country). Comparisons within countries, model (4) of Table \\ref{tab:two-step-country}; oil palm split by plantation type and by planting period from the models in Table \\ref{tab:palm-split}.", fig.width = 5.5, fig.height = 3.4, fig.align = "center">>=
+library(data.table); library(ggplot2)
+invisible(requireNamespace("fixest", quietly = TRUE))  # registers vcov() for fixest objects
+rq2.ctr1 <- function(fit, a, b = "cat_S") {
+    V <- vcov(fit); cf <- coef(fit)
+    est <- cf[[a]] - cf[[b]]; se <- sqrt(V[a, a] + V[b, b] - 2 * V[a, b])
+    data.table(term = a, est = est, lo = est - qnorm(0.975) * se, hi = est + qnorm(0.975) * se,
+               p = 2 * pnorm(-abs(est / se)))
+}
+rq2.ctr <- rbind(
+    rbindlist(lapply(setdiff(q2.vars, "cat_S"), rq2.ctr1, fit = fit.q2.c1))[, group := "Categories"],
+    rbindlist(lapply(c("p_ind", "p_sm"), rq2.ctr1, fit = palm.fits$type$fit))[, group := "Oil palm by type"],
+    rbindlist(lapply(c("p_early", "p_late"), rq2.ctr1, fit = palm.fits$period$fit))[, group := "Oil palm by period"])
+rq2.lab <- c(sub(":", "", q2.labels), p_ind = "Industrial oil palm", p_sm = "Smallholder oil palm",
+             p_early = "Oil palm planted 2001-2010", p_late = "Oil palm planted 2011-2020")
+rq2.ctr[, label := factor(rq2.lab[term], levels = rev(rq2.lab[term]))]
+rq2.ctr[, group := factor(group, levels = c("Categories", "Oil palm by type", "Oil palm by period"))]
+setkey(rq2.ctr, term)
+s.S <- coef(fit.q2.c1)[["cat_S"]] * sd(q2.dt$cat_S)
+
+ggplot(rq2.ctr, aes(est, label)) +
+    geom_vline(xintercept = 0, colour = "#c3c2bd", linewidth = 0.3) +
+    geom_linerange(aes(xmin = lo, xmax = hi), colour = "#2a78d6", linewidth = 0.5) +
+    geom_point(colour = "#2a78d6", size = 1.6) +
+    facet_grid(group ~ ., scales = "free_y", space = "free_y") +
+    labs(x = "Difference from shifting cultivation (IWI units per year per percentage point)", y = NULL) +
+    theme_minimal(base_size = 8) +
+    theme(panel.grid.minor = element_blank(), panel.grid.major.y = element_blank(),
+          panel.grid.major.x = element_line(colour = "#eeede9"),
+          strip.text.y = element_text(angle = 0, hjust = 0, colour = "#0b0b0b"),
+          axis.text = element_text(colour = "#52514e"))
+@
+
+Shifting cultivation is associated with a slower IWI trend than in other areas of the same country: one standard deviation more shifting cultivation goes with a trend that is \Sexpr{sprintf("%.3f", abs(s.S))} IWI units per year slower (Table \ref{tab:two-step-country}). Figure \ref{fig:rq2.coef} compares the other categories with shifting cultivation, per percentage point of the land area. Oil palm stands out: an area where one percentage point of the land went from forest to oil palm had an IWI trend \Sexpr{sprintf("%.3f", rq2.ctr["cat_P", est])} IWI units per year faster (95\% CI \Sexpr{sprintf("%.3f", rq2.ctr["cat_P", lo])}--\Sexpr{sprintf("%.3f", rq2.ctr["cat_P", hi])}) than an area where the same land went to shifting cultivation. % TODO: one sentence each on U, K, G, L and R
+Logging is associated with a slightly slower trend than other areas in the country (p = \Sexpr{sprintf("%.3f", loo.L.full$L.p)}).
+
+<<rq2.palm.numbers>>=
+rq2.el <- rq2.ctr1(palm.fits$period$fit, "p_early", "p_late")
+rq2.si <- rq2.ctr1(palm.fits$type$fit, "p_sm", "p_ind")
+rq2.b  <- function(fit, v) coef(fit)[[v]]
+@
+
+The association for oil palm depends on when the palms were planted. Oil palm planted 2001--2010, which had reached full production by the last surveys, is associated with an IWI trend \Sexpr{sprintf("%.3f", rq2.b(palm.fits$period$fit, "p_early"))} IWI units per year faster per percentage point of the land area, compared with \Sexpr{sprintf("%.3f", rq2.b(palm.fits$period$fit, "p_late"))} for oil palm planted 2011--2020 (difference \Sexpr{sprintf("%.3f", rq2.el$est)}, p = \Sexpr{sprintf("%.3f", rq2.el$p)}; Table \ref{tab:palm-split-contrast}). The later plantations are still associated with a faster trend than shifting cultivation. The difference between early and late plantations remains when oil palm planted before 2001 is controlled for, so it is not only a matter of long-established oil palm economies. Smallholder oil palm is associated with a faster trend than industrial oil palm (difference \Sexpr{sprintf("%.3f", rq2.si$est)} per percentage point, p = \Sexpr{sprintf("%.3f", rq2.si$p)}); industrial oil palm does not differ significantly from shifting cultivation.
+
+<<palm.split.contrast.78, results = "asis", cache = FALSE>>=
+## as chunk palm.split.contrast, without model (9) (oil palm by type and period)
+palm.contrasts.78 <- Filter(function(x) x[[1]] != "both", palm.contrasts)
+palm.contrast.tab.78 <- rbindlist(lapply(palm.contrasts.78, function(x) {
+    r <- contrast.q2(palm.fits[[x[[1]]]]$fit, x[[2]], x[[3]])
+    data.table(contrast = x[[4]], model = c(type = "(7)", period = "(8)")[[x[[1]]]],
+               est = r[1], p = r[2])
+}))
+setnames(palm.contrast.tab.78, c("", "model", "per pp [95\\% CI]", "p"))
+xtable::print.xtable(xtable::xtable(palm.contrast.tab.78,
+             caption = "Differences in the observed IWI trend (IWI units per year) between kinds of oil palm, and between oil palm and shifting cultivation, per percentage point of the land area, comparing areas within the same country. Models of Table \\ref{tab:palm-split}.",
+             label = "tab:palm-split-contrast", align = c("l", "l", "c", "r", "r")),
+      include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity)
+@
+
+% TODO: Indonesia carries little weight; the oil palm results come mainly from West Africa and Peru (say so here or in the discussion)
+
+\subsection{Robustness}
+\label{sec:res-robustness}
+
+The contrast between oil palm and shifting cultivation is positive and significant at the 5 per cent level in \Sexpr{sum(loo.dt$PS.p < 0.05)} of the \Sexpr{nrow(loo.dt)} models that leave out one country at a time, and the estimate for logging is negative in \Sexpr{sum(loo.L.dt$L < 0)} of them (Table \ref{tab:loo}). Restricted to areas whose interviews span at least ten years (model 6 of Table \ref{tab:two-step-country}), the estimates are almost the same as in model 4. Without weights (model 5), all estimates are less precise and the estimate for oil palm changes sign (\Sexpr{est.ci.q2(fit.q2.c2, "cat_P", cat.sd[["cat_P"]])} per standard deviation); the unweighted model gives areas with very imprecise trends as much weight as areas with precise ones (Section \ref{sec:coverage}). With fixed effects for top level regions instead of countries (Table \ref{tab:two-step}), the estimates point in the same directions, but the association with shifting cultivation is weaker (\Sexpr{est.ci.q2(fit.q2.1, "cat_S", cat.sd[["cat_S"]])} per standard deviation), since comparisons within regions use less of the variation in forest loss. Splitting the residual category R into its components leaves the estimates for the other categories unchanged; the positive estimate for R comes mainly from forest loss without a dominant driver and from the settlements driver where the land is not built-up in 2020 (Appendix \ref{app:sensitivity}).
+
+\clearpage
+\bibliography{references,paper_II}
 
 \clearpage
 
 \appendix
+
+\section{GNI and deforestation at the area level}
+\label{app:gni-area}
+
+Figure \ref{fig:context.countries} compares countries. To check that the association between GNI and deforestation is not driven by a few countries, we also model it at the level of administrative areas. The data set has one row per area and year 2000, 2005, 2010 and 2015. The outcome is the change in forest cover over the following five years, in percentage points, from the forest cover per area every fifth year \citep{Ekbrand2026forest}. The predictors are log GNI per capita and its square; the average IWI of the area in year $t$, interpolated with a linear mixed model of IWI by area and interview year (random intercepts and slopes for area, top level region and country, controlling for the education of a fixed birth cohort); the forest cover of the area at time $t$; and year. The model has random intercepts for country and top level region. GNI per capita is imputed GNI from a previous study, with Indian states as separate units. % TODO: cite the GNI source
+
+<<kuznet-7-effects, fig.cap = "Predicted forest cover change the next five years ($t+5$, percentage points) as a function of GNI per capita, from a linear mixed model with a linear and a quadratic term for log GNI, the average IWI of the area, the forest cover of the area at time $t$, year, and random intercepts for country and top level region. Shaded: 95\\% confidence interval.", fig.width = 5, fig.height = 3, fig.align = "center">>=
+library(lme4); library(effects); library(lattice); library(latticeExtra)
+my.fit.deforestation.7 <- lmer(forestation_change_5yr_forward ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country), data = my.dt.clean)
+my.fit.deforestation.7b <- lmer(forestation_change_5yr_forward ~ iwi + forest_coverage + gdp.log + I(gdp.log^2) + year + (1 | country) + (1 | top.level.region), data = my.dt.clean)
+
+gdp_range <- range(my.dt.clean$gdp.log, na.rm = TRUE)
+my.eff <- Effect("gdp.log", my.fit.deforestation.7b,
+                 xlevels = list(gdp.log = seq(gdp_range[1], gdp_range[2], length.out = 100)))
+## Hint to the exponentiation, but include 12000 as a upper point with reasonable coverage.
+x_ticks <- c(1000, 2000, 4000, 8000, 12000)
+p <- plot(my.eff,
+          axes = list(x = list(gdp.log = list(lab = "GNI"), cex = 0.5),
+                      y = list(cex = 0.5)),
+          main = "", ylim = c(-1.3, 0.6))
+p <- update(p,
+            xlab = list(label="GNI", cex = 0.8),
+            ylab = list(label="Predicted forestation change", cex = 0.8),
+            scales = list(x = list(at = log(x_ticks), labels = x_ticks )))
+p + 
+    layer(panel.grid(h = -1, v = 0, lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(v = log(x_ticks), lty = 2, lwd = 1, col = rgb(0.7, 0.7, 0.7, alpha = 1)), under = FALSE) + 
+    layer(panel.abline(h = 0, lty = 2, lwd = 1.2), under = FALSE)
+
+@
+
+The model is based on \Sexpr{format(nobs(my.fit.deforestation.7b), big.mark = ",")} area-years. Roughly speaking, in these low- and middle-income countries a GNI per capita above \$8000 per year is associated with no deforestation, while lower GNI is associated with deforestation (Figure \ref{fig:kuznet-7-effects}).
 % The file final.RDS it is created automatically by the function \textrm{download.and.harmonise()} in the package \textrm{globallivingconditions}. The invokation of \textrm{download.and.harmonise()} was done by the template \textrm{dhs-debug-child.Rnw} which dfines the parameters used. As for parameters, the only non-default parameters used are
 
 % \begin{verbatim}
@@ -1270,4 +1684,234 @@ print(xtable(span.tab,
 % \end{verbatim}
 
 % which means: ``get all file types, including the GIS ones'' and ``calculate IWI, include some special stuff for India''. The India stuff is to (a) create an alterantive country variable based on the indian state name and (b) use historical state division so that the set of states is constant, ie. undo state splits that occured after 1990 and (c) include a variable for the household weight within the indian state.
+
+\section{Model specifications and variables}
+\label{sec:model-specs}
+\label{app:model-specs}
+
+This section gives the equations of the model for research question 1 (Section \ref{sec:res-rq1}) and of the two-step models for research question 2 (Section \ref{sec:res-rq2}), and describes the variables, their sources and how they were scaled or transformed. Indices: $a$ is an administrative area, $r(a)$ its top level region, $c(a)$ its country, and $t$ an interview year with DHS data in the area.
+
+\subsection{Model for research question 1}
+\label{app:rq1-model}
+
+The model in Section \ref{sec:res-rq1} is a linear mixed model of the area-year averages $\bar Y_{at}$ with interview years 2000--2020, estimated by restricted maximum likelihood with \texttt{lme4::lmer} \citep{Bates2015lme4}. The random effects and the residual are
+\begin{gather*}
+u_a \sim N(0, \sigma^2_u), \quad
+\begin{pmatrix} v_r \\ b_r \end{pmatrix} \sim N(\mathbf{0}, \Sigma_r), \quad
+d_r \sim N(0, \sigma^2_d), \quad
+\begin{pmatrix} w_c \\ g_c \end{pmatrix} \sim N(\mathbf{0}, \Sigma_c), \quad
+h_c \sim N(0, \sigma^2_h), \\
+\varepsilon_{at} \sim N\!\left(0, \frac{\sigma^2}{\omega_{at}}\right),
+\end{gather*}
+with $\omega_{at} = n_{at}/\bar n$, where $n_{at}$ is the number of respondents behind the area-year average and $\bar n$ its mean over all area-years. The effect of forest loss in region $r$ of country $c$ is estimated as $\hat\beta_2 + \hat h_c + \hat d_r$, where $\hat h_c$ and $\hat d_r$ are the conditional modes, and its variance is approximated by $\mathrm{Var}(\hat\beta_2)$ plus the conditional variances of $h_c$ and $d_r$ (covariances are ignored). Whether the effect of forest loss varies is tested by comparing the model with one where $\sigma^2_d = \sigma^2_h = 0$, with a likelihood ratio test on the REML criteria (both models have the same fixed effects).
+
+\subsection{Two-step models for research question 2}
+
+\paragraph{Step 1: observed IWI trend per area (Section \ref{sec:obs-trend}).} Again with area-years as units, but on the original scales and with fixed effects (\texttt{fixest::feols}, \citealt{Berge2018fixest}):
+\begin{equation}
+\bar Y_{at} = \alpha_a + s_a (t - 2010) + \lambda\, e_{at} + \gamma_{c(a),t} + \varepsilon_{at}, \qquad
+\mathrm{Var}(\varepsilon_{at}) = \tau^2_v + \frac{\sigma^2_w}{n_{at}}, \label{eq:step1}
+\end{equation}
+where $\alpha_a$ and $s_a$ are an intercept and a slope for each area, $\lambda$ is common to all areas, and $\gamma_{c,t}$ are fixed effects for country $\times$ interview year (DHS rounds). The variance of an area-year average has a between-village component $\tau^2_v$ and a between-household component $\sigma^2_w / n_{at}$; both are estimated from the leverage-corrected squared residuals of an unweighted first fit, and \eqref{eq:step1} is then estimated with weights $1/(\hat\tau^2_v + \hat\sigma^2_w / n_{at})$. With the country $\times$ year effects, $s_a$ is identified only relative to the other areas in the country, so the outcome of step 2 is the deviation from the inverse-variance weighted country mean,
+\[
+\tilde s_a = \hat s_a - \frac{\sum_{a' \in c(a)} \hat s_{a'} / \mathrm{se}_{a'}^2}{\sum_{a' \in c(a)} 1 / \mathrm{se}_{a'}^2},
+\qquad
+\mathrm{se}_a = \Big( \sum_t \hat\omega_{at} (t - \bar t_a)^2 \Big)^{-1/2},
+\]
+with $\hat\omega_{at} = 1/(\hat\tau^2_v + \hat\sigma^2_w / n_{at})$ and $\bar t_a$ the $\hat\omega$-weighted mean interview year of the area. Only areas with at least two interview years (after dropping country-years with a single area) have a trend.
+
+\paragraph{Step 2: meta-regression.} One observation per area:
+\begin{equation}
+\tilde s_a = \sum_j \beta_j L_{aj} + \sum_m \gamma_m Z_{am} + \alpha_{g(a)} + \eta_a + e_a, \qquad
+\eta_a \sim (0, \tau^2_{\mathrm{res}}), \quad e_a \sim (0, \mathrm{se}_a^2), \label{eq:step2}
+\end{equation}
+where $L_{aj}$ are the seven categories of forest loss $\{P, U, K, G, S, L, R\}$, $Z_{am}$ the controls $B$, $D$, $N^{\mathrm{bu}}$, $N^{\mathrm{cr}}$, $N^{\mathrm{op}}$, $U^{\mathrm{rb}}$, $F$ and $\hat\alpha^{2010}_a$, $\alpha_{g(a)}$ fixed effects for a group $g$, $\eta_a$ the variation in true trends between areas that the model does not explain, and $e_a$ the sampling error of the area's trend. The model is estimated by weighted least squares with weights $1/(\mathrm{se}_a^2 + \hat\tau^2_{\mathrm{res}})$, where $\hat\tau^2_{\mathrm{res}}$ is the \citet{PauleMandel1982} estimate (the value for which the weighted sum of squared residuals equals its degrees of freedom). Standard errors are clustered by country.
+
+\begin{description}
+\item[Model (1):] $g = $ top level region, weights $1/(\mathrm{se}_a^2 + \hat\tau^2_{\mathrm{res}})$ with $\hat\tau^2_{\mathrm{res}}$ estimated for this model.
+\item[Model (2):] $g = $ country, with the weights of model (1). It differs from model (4) only in $\hat\tau^2_{\mathrm{res}}$ and is not shown.
+\item[Model (3):] $g = $ top level region, unweighted (ordinary least squares).
+\item[Model (4):] $g = $ country, weights $1/(\mathrm{se}_a^2 + \hat\tau^2_{\mathrm{res}})$ with $\hat\tau^2_{\mathrm{res}}$ estimated for this model. This is the main model.
+\item[Model (5):] as model (4), unweighted.
+\item[Model (6):] as model (4), restricted to areas whose interviews span at least ten years.
+\item[Models (7) and (8):] as model (4), with $P$ split by plantation type (industrial, smallholder) or by planting period (2001--2010, 2011--2020), and oil palm planted before 2001 (on any land) as an additional control.
+\end{description}
+
+\paragraph{Reported quantities.} Tables \ref{tab:two-step-country} and \ref{tab:two-step} report $\beta_j \cdot s_{L_j}$, the difference in the observed IWI trend in IWI units per year associated with one standard deviation more of category $L_j$ (standard deviation across the areas in the model). Figure \ref{fig:rq2.coef} and Tables \ref{tab:palm-split} and \ref{tab:palm-split-contrast} report estimates and differences $\beta_j - \beta_k$ per percentage point of the land area.
+
+\subsection{Variables}
+
+All land cover variables are computed per area with coverage-fraction weighting, using the R package \texttt{exactextractr} \citep{exactextractr}: each 30 m cell counts with the fraction of the cell that lies inside the area. ``Land area'' excludes open water, ocean and cells with no data in 2000 (GLCLU codes 200--207, 254, 255). Unless stated otherwise, land cover variables are per cent of the land area in 2000 and are not otherwise transformed.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\begin{tabular}{p{0.17\textwidth}p{0.35\textwidth}p{0.17\textwidth}p{0.19\textwidth}}
+\toprule
+Symbol and code & Description & Source & Scaling / transformation \\
+\midrule
+$\bar Y_{at}$ \newline {\scriptsize \texttt{average.iwi}} & Mean International Wealth Index (0--100) of the households interviewed in area $a$ in year $t$ & DHS, harmonised (see Sources) & IWI units \\
+$t$ \newline {\scriptsize \texttt{year.of.interview}} & Interview year & DHS & In \eqref{eq:step1} centred at 2010; in the model for research question 1, decades from 2010 \\
+$e_{at}$ \newline {\scriptsize \texttt{average.education}} & Mean years of education of the respondents born 1960--1976 in area $a$, year $t$ & DHS & Years \\
+$n_{at}$ \newline {\scriptsize \texttt{n\_respondents}} & Number of respondents with an IWI value in area $a$, year $t$ & DHS & Weights $n_{at}/\bar n$ in the model for research question 1; variance model in \eqref{eq:step1} \\
+$\tilde s_a$ \newline {\scriptsize \texttt{iwi\_slope\_wc}} & Observed IWI trend of the area, IWI units per year, deviation from the country mean & Step 1, \eqref{eq:step1} & See step 1 \\
+$\mathrm{se}_a$ \newline {\scriptsize \texttt{iwi\_slope\_wc\_se}} & Standard error of $\tilde s_a$ & Step 1 & --- \\
+$\hat\alpha^{2010}_a$ \newline {\scriptsize \texttt{iwi\_2010\_obs}} & Observed IWI level of the area in 2010 (intercept of the step 1 model without country $\times$ year effects) & Step 1 & IWI units \\
+$F$ \newline {\scriptsize \texttt{forest\_share\_2000}} & Forest (trees $\geq$ 5 m) in 2000 & GLCLU \citep{Potapov2022} & \% of land area \\
+$U^{\mathrm{rb}}$ \newline {\scriptsize \texttt{share.urban}} & Share of the area's DHS respondents living in urban places, pooled over all survey years & DHS & Proportion (0--1) \\
+\bottomrule
+\end{tabular}
+\caption{Variables measured with DHS data, and derived from them.}
+\label{tab:vars-dhs}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\begin{tabular}{p{0.22\textwidth}p{0.42\textwidth}p{0.27\textwidth}}
+\toprule
+Symbol and code & Description (land cover 2000 $\to$ 2020, \% of land area in 2000) & Source \\
+\midrule
+\multicolumn{3}{l}{\emph{Regrowth and change on land that was not forest in 2000 (controls in the two-step models)}} \\
+$B$ \newline {\scriptsize \texttt{pct\_B\_shortveg\_to\_forest}} & Short vegetation $\to$ forest & GLCLU, {\scriptsize\texttt{transitions-per-area.R}} \\
+$D$ \newline {\scriptsize \texttt{pct\_D\_cropland\_to\_forest}} & Cropland $\to$ forest & GLCLU \\
+$N^{\mathrm{bu}}$ \newline {\scriptsize \texttt{nf\_builtup}} & Short vegetation, cropland or other non-forest land $\to$ built-up & GLCLU \\
+$N^{\mathrm{cr}}$ \newline {\scriptsize \texttt{nf\_cropland}} & Short vegetation or other non-forest land $\to$ cropland & GLCLU \\
+\midrule
+\multicolumn{3}{l}{\emph{What replaced the forest (two-step models); the seven categories do not overlap}} \\
+$P$ \newline {\scriptsize \texttt{cat\_P}} & Forest in 2000 where oil palm was planted 2001--2020, whatever GLCLU shows in 2020 (incl.\ palms $\geq$ 5 m that GLCLU classifies as forest) & Oil palm planting year \citep{Descals2024} and GLCLU \\
+$U$ \newline {\scriptsize \texttt{cat\_U}} & Forest $\to$ built-up (any driver except oil palm) & GLCLU \\
+$K$ \newline {\scriptsize \texttt{cat\_K}} & Driver permanent agriculture, cropland in 2020 & Drivers of forest loss v1.3, 1 km \citep{Sims2025drivers}, and GLCLU \\
+$G$ \newline {\scriptsize \texttt{cat\_G}} & Driver permanent agriculture, short vegetation in 2020 & Drivers map and GLCLU \\
+$S$ \newline {\scriptsize \texttt{cat\_S}} & Driver shifting cultivation, not built-up in 2020 & Drivers map and GLCLU \\
+$L$ \newline {\scriptsize \texttt{cat\_L}} & Driver logging (incl.\ wood fibre plantations), not built-up in 2020 & Drivers map and GLCLU \\
+$R$ \newline {\scriptsize \texttt{cat\_R}} & All other forest loss: mining and energy, wildfire, other natural disturbances, no driver, settlements driver without built-up land, permanent agriculture to other classes & Drivers map and GLCLU \\
+$N^{\mathrm{op}}$ \newline {\scriptsize \texttt{palm\_nf}} & Land that was not forest in 2000 where oil palm was planted 2001--2020 & Oil palm planting year and GLCLU \\
+\midrule
+\multicolumn{3}{l}{\emph{Forest loss up to the interview year (model for research question 1)}} \\
+$D_{at}$ \newline {\scriptsize \texttt{forest\_loss}} & Cumulative net loss of forest cover in area $a$ from 2000 up to interview year $t$, percentage points; interpolated linearly between the years 2000, 2005, 2010, 2015 and 2020 & Forest cover per area \citep{Ekbrand2026forest} \\
+\bottomrule
+\end{tabular}
+\caption{Land cover change variables. Forest loss means forest (GLCLU trees $\geq$ 5 m) in 2000 and not forest in 2020. The driver of a 30 m cell is the dominant driver of the 1 km cell it lies in (classification band of the drivers map, 2001--2025). GLCLU classes: forest codes 27--48 and 127--148; short vegetation 0--26 and 100--126 (incl.\ trees below 5 m); cropland 244; built-up 250.}
+\label{tab:vars-landcover}
+\end{table}
+
+\paragraph{Sources.} DHS: Demographic and Health Surveys \citep{Wang2021}, household and individual recode files with GPS coordinates, harmonised and linked to the administrative areas with the R package \texttt{globallivingconditions} \citep{Ekbrand_dhsharmonisation}; IWI as defined by \citet{Smits2014}. GLCLU: Global Land Cover and Land Use Change 2000--2020, v2 \citep{Potapov2022}, 30 m, years 2000 and 2020. Drivers: Global drivers of forest loss at 1 km resolution, v1.3, 2001--2025 \citep{Sims2025drivers}. Oil palm: global oil palm extent 2021 and planting year 1990--2021 \citep{Descals2024}. Administrative areas: the partition of the forest change data set \citep{Ekbrand2026forest}, based on GADM \citep{Hijmans_GADM_v41} with areas merged to ensure DHS coverage.
+
+\clearpage
+
+\section{Observed IWI trend per area}
+\label{sec:obs-trend}
+
+The education coefficient is \Sexpr{sprintf("%.2f", coef(fit.obs)[["average.education"]])} IWI units per year of education (s.e.\ \Sexpr{sprintf("%.2f", fixest::se(fit.obs)[["average.education"]])}). The estimated variance components are $\hat\tau = \Sexpr{sprintf("%.2f", sqrt(tau2.obs))}$ (between villages) and $\hat\sigma_w = \Sexpr{sprintf("%.1f", sqrt(sigma2w.obs))}$ (between households), in IWI units. Table \ref{tab:obs-trend-span} shows how the precision of the trends depends on the time between the first and the last interview year.
+
+All areas in a country are interviewed in the same DHS rounds, so a round that deviates
+
+The between-area standard deviation of the true IWI slopes within countries is \Sexpr{sprintf("%.3f", tau.within.country)} IWI units per year (95\% CI \Sexpr{sprintf("%.3f", tau.within.country.ci[["lower"]])}--\Sexpr{sprintf("%.3f", tau.within.country.ci[["upper"]])}); after the explanatory variables it is \Sexpr{sprintf("%.3f", sqrt(tau2.res.country))} (95\% CI \Sexpr{sprintf("%.3f", tau.res.country.ci[["lower"]])}--\Sexpr{sprintf("%.3f", tau.res.country.ci[["upper"]])}). Table \ref{tab:two-step-country} shows the estimates per standard deviation of each category, and Figure \ref{fig:rq2.coef} the differences from shifting cultivation per percentage point of the land area.
+
+\section{Two-step models with fixed effects for top level regions}
+\label{sec:two-step}
+
+The between-area standard deviation of the true IWI slopes within top level regions is \Sexpr{sprintf("%.3f", tau.within.region)} IWI units per year, compared with \Sexpr{sprintf("%.3f", sqrt(tau2.slope))} across all areas (including differences between countries); after the explanatory variables it is \Sexpr{sprintf("%.3f", sqrt(tau2.res.region))}. Table \ref{tab:two-step} shows the estimates per standard deviation of each category.
+
+<<app.two.step.table, results = "asis", cache = FALSE>>=
+## as chunk two.step.table, without model (2)
+app.two.step.tab <- data.table(variable = q2.short[q2.vars],
+                               sapply(q2.fits[c(1, 3)], function(f) sapply(q2.vars, function(v) est.ci.q2(f, v, cat.sd[[v]]))))
+setnames(app.two.step.tab, c("", "(1)", "(3)"))
+xtable::print.xtable(xtable::xtable(app.two.step.tab,
+             caption = paste0("Difference in the observed IWI trend (IWI units per year) associated with one standard deviation more of each category of forest loss 2000--2020, comparing areas within the same top level region, with 95\\% confidence intervals clustered by country. (1) weighted, (3) unweighted. ",
+                              format(nrow(q2.dt), big.mark = ","), " areas. Weights $1/(\\mathrm{se}^2 + \\tau^2_{\\mathrm{res}})$ with $\\hat\\tau_{\\mathrm{res}} = ",
+                              sprintf("%.3f", sqrt(tau2.res.region)),
+                              "$. Controls as in Table \\ref{tab:two-step-country}. Model (2) is not shown, see Appendix \\ref{app:model-specs}."),
+             label = "tab:two-step", align = c("l", "l", "r", "r")),
+      include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity)
+@
+
+\section{Sensitivity of the within-country results}
+\label{app:sensitivity}
+
+Oil palm is concentrated in few areas and countries, so a single country could drive the results for P. We therefore re-estimate model (4) of Table \ref{tab:two-step-country} leaving out one country at a time. We also split category R, which mixes very different processes, into its components.
+
+The five countries with most of the oil palm planted on former forest land account for \Sexpr{sprintf("%.0f", 100 * sum(head(palm.by.country$share, 5)))}\% of it (\Sexpr{paste(sprintf("%s %.0f\\%%", latex.escape(head(palm.by.country$country, 5)), 100 * head(palm.by.country$share, 5)), collapse = ", ")}). Leaving out one country at a time, the contrast P $-$ S ranges from \Sexpr{sprintf("%.4f", min(loo.dt$PS))} to \Sexpr{sprintf("%.4f", max(loo.dt$PS))} (all countries: \Sexpr{sprintf("%.4f", loo.full$PS)}), and its p-value is below 0.05 in \Sexpr{sum(loo.dt$PS.p < 0.05)} of the \Sexpr{nrow(loo.dt)} runs. Table \ref{tab:loo} shows the countries whose exclusion changes the contrast the most.
+
+The five countries with most of the logging account for \Sexpr{sprintf("%.0f", 100 * sum(head(logging.by.country$share, 5)))}\% of it (\Sexpr{paste(sprintf("%s %.0f\\%%", latex.escape(head(logging.by.country$country, 5)), 100 * head(logging.by.country$share, 5)), collapse = ", ")}). Leaving out one country at a time, the estimate for L ranges from \Sexpr{sprintf("%.3f", min(loo.L.dt$L))} to \Sexpr{sprintf("%.3f", max(loo.L.dt$L))} IWI units per year per standard deviation (all countries: \Sexpr{sprintf("%.3f", loo.L.full$L)}, p = \Sexpr{sprintf("%.3f", loo.L.full$L.p)}); it is negative in \Sexpr{sum(loo.L.dt$L < 0)} and significant at the 5\% level in \Sexpr{sum(loo.L.dt$L.p < 0.05)} of the \Sexpr{nrow(loo.L.dt)} runs. Table \ref{tab:loo} shows the countries whose exclusion changes the contrast P $-$ S or the estimate for L the most.
+
+<<app.loo.table, results = "asis", cache = FALSE>>=
+## leave one country out, model (4): oil palm - shifting cultivation and logging in one table
+app.loo <- merge(rbind(loo.full, loo.dt, fill = TRUE)[, list(excluded, areas, PS.ci, PS.p, PS, PS.change = change)],
+                 rbind(loo.L.full, loo.L.dt, fill = TRUE)[, list(excluded, L, L.lo, L.hi, L.p, L.change = change)],
+                 by = "excluded")
+app.loo.show <- unique(c(head(app.loo[order(-PS.change)]$excluded, 5), head(app.loo[order(-L.change)]$excluded, 5)))
+app.loo.show <- app.loo.show[!is.na(app.loo.show)]
+app.loo.tab <- rbind(app.loo[excluded == "none (all countries)"],
+                     app.loo[excluded %in% app.loo.show][order(excluded)])
+app.share <- function(x, by) ifelse(x %in% by$country, sprintf("%.0f\\%%", 100 * by$share[match(x, by$country)]), "")
+## round the contrast (printed with four decimals by contrast.q2) to three decimals
+app.round3 <- function(x) vapply(regmatches(x, gregexpr("-?[0-9]+\\.[0-9]+", x)), function(v)
+    sprintf("%.3f [%.3f, %.3f]", as.numeric(v[1]), as.numeric(v[2]), as.numeric(v[3])), "")
+app.loo.print <- app.loo.tab[, list(
+    `left out` = latex.escape(sub("none (all countries)", "none", excluded, fixed = TRUE)),
+    areas = format(areas, big.mark = ","),
+    `P share` = app.share(excluded, palm.by.country), `L share` = app.share(excluded, logging.by.country),
+    `P $-$ S [95\\% CI]` = app.round3(PS.ci), p = sprintf("%.3f", PS.p),
+    `L [95\\% CI]` = sprintf("%.3f [%.3f, %.3f]", L, L.lo, L.hi), ` p` = sprintf("%.3f", L.p))]
+xtable::print.xtable(xtable::xtable(app.loo.print,
+             caption = "Model (4) of Table \\ref{tab:two-step-country} re-estimated leaving out one country at a time: the full sample (none left out) and the countries whose exclusion changes the contrast P $-$ S or the estimate for L the most. P $-$ S: oil palm $-$ shifting cultivation, IWI units per year per percentage point of the land area. L: logging, IWI units per year per standard deviation. P share and L share: the country's share of all forest loss to oil palm and to logging in the areas of the analysis.",
+             label = "tab:loo", align = c("l", ">{\\raggedright\\arraybackslash}p{2.3cm}", "r", "r", "r", "r", "r", "r", "r")),
+      include.rownames = FALSE, booktabs = TRUE, size = "scriptsize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity,
+      hline.after = c(-1, 0, 1, nrow(app.loo.print)))
+@
+
+Splitting category R into its components (mining and energy, wildfire, other natural disturbances, loss without a dominant driver, the settlements driver where the land is not built-up, and permanent agriculture to other classes) leaves the estimates for the other categories practically unchanged (estimate for S \Sexpr{est.ci.q2(fit.split, "cat_S", sd(q2.dt$cat_S))} per standard deviation, compared with \Sexpr{est.ci.q2(fit.q2.c1, "cat_S", cat.sd[["cat_S"]])} in model 4).
+
+\section{Oil palm by plantation type and planting period}
+\label{sec:palm-split}
+
+Of the oil palm planted on former forest land in the areas of the analysis, \Sexpr{sprintf("%.0f", 100 * sum(q2p$p_ind * q2p$valid_2000) / sum(q2p$cat_P * q2p$valid_2000))}\% is industrial and \Sexpr{sprintf("%.0f", 100 * sum(q2p$p_sm * q2p$valid_2000) / sum(q2p$cat_P * q2p$valid_2000))}\% smallholder; \Sexpr{palm.n[["p_ind"]]} areas have more than 1\% of their land in industrial oil palm and \Sexpr{palm.n[["p_sm"]]} in smallholder oil palm.
+
+Oil palm with a planting year but not in the 2021 extent map (``untyped'', \Sexpr{sprintf("%.0f", 100 * sum(q2p$p_un * q2p$valid_2000) / sum(q2p$cat_P * q2p$valid_2000))}\% of P) occurs almost only together with smallholder oil palm (correlation \Sexpr{sprintf("%.2f", cor(q2p$p_un, q2p$p_sm.only))} across areas), most likely small smallholder fields that the 10 m map did not detect, so it is counted as smallholder oil palm. To separate the maturity of the plantations from long-established oil palm economies, the models also control for oil palm planted before 2001 (on any land).
+
+<<app.palm.split.table, results = "asis", cache = FALSE>>=
+## as chunk palm.split.table, without model (9)
+app.palm.specs <- palm.specs[c("type", "period")]
+app.palm.tab <- rbindlist(lapply(names(app.palm.specs), function(m) {
+    vars <- c(app.palm.specs[[m]], "cat_S")
+    data.table(model = c(type = "(7) by type", period = "(8) by period")[[m]],
+               variable = palm.labels[vars], areas = palm.n[vars],
+               est = sapply(vars, function(v) est.ci.pp(palm.fits[[m]]$fit, v)))
+}))
+app.palm.tab[duplicated(model), model := ""]
+setnames(app.palm.tab, c("model", "", "areas $>$ 1\\%", "per pp [95\\% CI]"))
+xtable::print.xtable(xtable::xtable(app.palm.tab,
+             caption = paste0("Oil palm on former forest land by plantation type and planting period: difference in the observed IWI trend (IWI units per year) per percentage point of the land area, comparing areas within the same country, with 95\\% confidence intervals clustered by country. ",
+                              format(nobs(palm.fits$type$fit), big.mark = ","), " areas. Same controls and the other categories of forest loss as in Table \\ref{tab:two-step-country}, and oil palm planted before 2001; $\\hat\\tau_{\\mathrm{res}}$ = ",
+                              paste(sprintf("%.3f", sqrt(sapply(palm.fits[c("type", "period")], `[[`, "tau2"))), collapse = " and "),
+                              " for models (7) and (8). Untyped oil palm is counted as smallholder. Areas $>$ 1\\%: areas with more than 1\\% of the land area in the category."),
+             label = "tab:palm-split", align = c("l", "l", "l", "r", "r")),
+      include.rownames = FALSE, booktabs = TRUE, size = "footnotesize",
+      sanitize.text.function = identity, sanitize.colnames.function = identity,
+      hline.after = c(-1, 0, cumsum(lengths(app.palm.specs) + 1)))
+@
+
+\section{Effect of forest loss per country}
+\label{app:rq1-countries}
+
+<<rq1b.country.table, results = "asis">>=
+library(data.table); library(xtable)
+rq1c.n <- rq1.long[, list(areas = uniqueN(area.name), regions = uniqueN(top.level.region)), by = country]
+rq1c.tab <- merge(rq1b.country, rq1c.n, by = "country")[order(-est)]
+rq1c.print <- rq1c.tab[, list(Country = country, Regions = regions, Areas = areas,
+                              `Effect [95\\% CI]` = sprintf("%.3f [%.3f, %.3f]", est,
+                                                            est - qnorm(0.975) * se, est + qnorm(0.975) * se),
+                              ` ` = ifelse(sig == "positive", "+", ifelse(sig == "negative", "$-$", "")))]
+print(xtable(rq1c.print,
+             caption = "Effect of forest loss on the average IWI of an area per country, IWI units per percentage point of forest cover lost since 2000: the average effect plus the deviation of the country, with approximate 95\\% intervals, from the model in Figure \\ref{fig:rq1b.map.region}. $+$ and $-$: the interval lies above or below zero. Regions and areas: number of top level regions and areas with interviews 2000--2020.",
+             label = "tab:rq1-countries", align = c("l", "l", "r", "r", "r", "c")),
+      include.rownames = FALSE, booktabs = TRUE, size = "footnotesize", tabular.environment = "longtable",
+      floating = FALSE, sanitize.text.function = identity, sanitize.colnames.function = identity)
+@
+
 \end{document}
