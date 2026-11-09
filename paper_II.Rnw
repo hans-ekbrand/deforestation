@@ -1,4 +1,4 @@
-\documentclass[10pt,english]{article}
+\documentclass[11pt,english]{article}
 \usepackage[paperwidth=164mm, paperheight=280mm, top=19mm, bottom=19mm, left=1cm, right=1cm]{geometry}
 \usepackage[english]{babel}
 \usepackage{booktabs}
